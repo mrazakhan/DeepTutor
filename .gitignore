@@ -8,6 +8,7 @@
 # User data directory (migrated to data/user/)
 data/user/
 data/knowledge_bases/
+data/course_content/
 run_code_workspace/
 src/agents/question/reference_papers/
 src/services/rag/eg_only_for_analysis/
