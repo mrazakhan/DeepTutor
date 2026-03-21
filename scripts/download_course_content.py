@@ -80,7 +80,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Calculus Volume 1",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Calculus_Volume_1_-_WEB_68M1Z5W.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Calculus_Volume_1_-_WEB_l4sAIKd.pdf",
                 "filename": "openstax_calculus_vol1.pdf",
                 "license": "CC BY 4.0",
             },
@@ -97,7 +97,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Calculus Volume 2",
-                "url": "https://d3bxy9euw4e147.cloudfront.net/oscms-prodcms/media/documents/CalculusVolume2-OP_esPpXTB.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Calculus_Volume_2_-_WEB.pdf",
                 "filename": "openstax_calculus_vol2.pdf",
                 "license": "CC BY 4.0",
             },
@@ -131,7 +131,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Precalculus 2e",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Precalculus2e-WEB_Rea8mN8.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Precalculus_2e-WEB.pdf",
                 "filename": "openstax_precalculus_2e.pdf",
                 "license": "CC BY 4.0",
             },
@@ -149,7 +149,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Biology 2e",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Biology2e-WEB_Rea8mN8.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Biology2e-WEB.pdf",
                 "filename": "openstax_biology_2e.pdf",
                 "license": "CC BY 4.0",
             },
@@ -160,7 +160,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Chemistry 2e",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Chemistry2e-WEB_Rea8mN8.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Chemistry2e-WEB.pdf",
                 "filename": "openstax_chemistry_2e.pdf",
                 "license": "CC BY 4.0",
             },
@@ -171,7 +171,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax College Physics 2e",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/College_Physics_2e-WEB_7Zesqz6.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/College_Physics_2e-WEB_7Zesafu.pdf",
                 "filename": "openstax_college_physics_2e.pdf",
                 "license": "CC BY 4.0",
             },
@@ -182,7 +182,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax College Physics 2e",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/College_Physics_2e-WEB_7Zesqz6.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/College_Physics_2e-WEB_7Zesafu.pdf",
                 "filename": "openstax_college_physics_2e.pdf",
                 "license": "CC BY 4.0",
             },
@@ -193,7 +193,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax University Physics Volume 1",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/UniversityPhysicsVolume1-WEB_7Zesqz6.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/University_Physics_Volume_1_-_WEB.pdf",
                 "filename": "openstax_university_physics_vol1.pdf",
                 "license": "CC BY 4.0",
             },
@@ -204,7 +204,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax University Physics Volume 2",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/UniversityPhysicsVolume2-WEB_7Zesqz6.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/University_Physics_Volume_2_-_WEB.pdf",
                 "filename": "openstax_university_physics_vol2.pdf",
                 "license": "CC BY 4.0",
             },
@@ -215,7 +215,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Biology 2e (Environmental chapters)",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Biology2e-WEB_Rea8mN8.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Biology2e-WEB.pdf",
                 "filename": "openstax_biology_2e.pdf",
                 "license": "CC BY 4.0",
             },
