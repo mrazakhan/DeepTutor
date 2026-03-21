@@ -22,7 +22,7 @@ SETTINGS_FILE = (
 
 # Default sidebar navigation order
 DEFAULT_SIDEBAR_NAV_ORDER = {
-    "start": ["/", "/history", "/knowledge", "/notebook"],
+    "start": ["/", "/courses", "/history", "/knowledge", "/notebook"],
     "learnResearch": ["/question", "/solver", "/guide", "/ideagen", "/research", "/co_writer"],
 }
 
@@ -30,7 +30,7 @@ DEFAULT_SIDEBAR_NAV_ORDER = {
 DEFAULT_UI_SETTINGS = {
     "theme": "light",
     "language": "en",
-    "sidebar_description": "✨ Data Intelligence Lab @ HKU",
+    "sidebar_description": "DeepTutor++ AP Academy",
     "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
 }
 

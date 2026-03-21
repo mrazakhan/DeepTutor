@@ -19,7 +19,7 @@ export const SIDEBAR_COLLAPSED_WIDTH = 64;
 /**
  * Default sidebar description
  */
-export const DEFAULT_SIDEBAR_DESCRIPTION = "✨ Data Intelligence Lab @ HKU";
+export const DEFAULT_SIDEBAR_DESCRIPTION = "DeepTutor++ AP Academy";
 
 /**
  * Default navigation order
