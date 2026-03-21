@@ -61,9 +61,9 @@ COURSE_CONTENT = {
         "name": "AP Computer Science Principles",
         "sources": [
             {
-                "name": "Blown to Bits (Digital Information Book)",
-                "url": "https://www.bitsbook.com/wp-content/uploads/2023/01/B2B_3rd_Edition2023-01-17.pdf",
-                "filename": "blown_to_bits.pdf",
+                "name": "Blown to Bits 2e (Digital Information Book)",
+                "url": "http://www.bitsbook.com/wp-content/uploads/2021/08/9780137441075-Blown-to-Bits-2e.pdf",
+                "filename": "blown_to_bits_2e.pdf",
                 "license": "CC BY-NC-SA 4.0",
             },
             {
