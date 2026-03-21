@@ -1,4 +1,4 @@
-# DeepTutor AP Academy — Implementation Plan
+# DeepTutor++ — Implementation Plan
 
 > Phased implementation plan for building an AP exam prep platform on DeepTutor.
 
@@ -22,32 +22,45 @@
 
 ---
 
-## Phase 1: Setup & Course Structure (1 week) ✅ IN PROGRESS
+## Phase 1: Setup & Course Structure ✅ DONE
 
 | Task | Status | Details |
 |------|--------|---------|
-| Fork/clone DeepTutor | Done | Cloned from GitHub |
+| Fork/clone DeepTutor | Done | Forked to mrazakhan/DeepTutor |
 | SQLite + SQLAlchemy setup | Done | `src/database/` — engine, models, Base |
 | Course data model | Done | courses, units, topics, learning_objectives tables |
 | Seed 13 AP courses | Done | `scripts/seed_courses.py` — 683 topics seeded |
 | Course catalog API | Done | `src/api/routers/courses.py` — list, detail, units, topics |
 | Course catalog frontend | Done | `web/app/courses/` — catalog + detail pages, sidebar link |
+| Branding | Done | Rebranded to DeepTutor++ everywhere |
+| Tests | Done | 16/16 passing (database + API endpoint tests) |
+| Deployment | Done | Live at http://66.179.255.201 via Docker + nginx |
 
 ---
 
-## Phase 2: Content Pipeline & AI Tutoring (2 weeks)
+## Phase 2A: CS & Math Content + Tutoring (1 week) — IN PROGRESS
 
 | Task | Est. | Details |
 |------|------|---------|
-| Download AP CEDs (all 13) | 0.5d | PDF collection from College Board |
-| Ingest CEDs into per-course KBs | 2d | Use DeepTutor's KB ingestion pipeline |
-| Ingest OpenStax textbooks | 2d | Map chapters to AP topics |
-| AP Tutor agent | 1.5d | `src/agents/tutor/` — extends base_agent, course-scoped RAG |
-| Topic study interface | 2d | Select topic → guided learning with course KB |
-| Past AP FRQ ingestion | 1d | Parse FRQs + scoring guidelines |
-| User namespace for KBs | 0.5d | Modify KB manager for per-user storage |
+| Download & ingest CS course materials | 0.5d | AP CSA (Java docs), AP CSP — per-course KBs (parallel) |
+| Download & ingest Math textbooks | 0.5d | OpenStax Calc, Stats, Precalc → per-course KBs (parallel) |
+| AP Tutor agent | 1d | `src/agents/tutor/` — extends base_agent, course-scoped RAG |
+| Topic study interface | 1d | Click topic → guided chat with course KB context |
+| User namespace for KBs | 0.5d | Modify KB manager for `{course_code}/{kb_name}` |
 
-**Deliverable**: AI tutoring for any AP topic backed by real course materials.
+**Deliverable**: AI tutoring for CS & Math courses backed by real course materials.
+
+---
+
+## Phase 2B: Science Content (0.5 week)
+
+| Task | Est. | Details |
+|------|------|---------|
+| Download & ingest Science textbooks | 0.5d | OpenStax Bio, Chem, Physics → per-course KBs (parallel) |
+| Past AP FRQ ingestion (all subjects) | 0.5d | Parse FRQs + scoring guidelines |
+| Verify tutoring across all 13 courses | 0.5d | End-to-end testing |
+
+**Deliverable**: AI tutoring for all 13 courses with complete content.
 
 ---
 
