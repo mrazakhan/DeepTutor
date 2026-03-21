@@ -277,9 +277,10 @@ export default function CourseDetailPage({
                 {isExpanded && (
                   <div className="border-t border-slate-100 dark:border-slate-700">
                     {unit.topics.map((topic, idx) => (
-                      <div
+                      <Link
                         key={topic.id}
-                        className={`flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors ${
+                        href={`/courses/${id}/study?topicId=${topic.id}&unitId=${unit.id}`}
+                        className={`flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer group ${
                           idx < unit.topics.length - 1
                             ? "border-b border-slate-50 dark:border-slate-700/50"
                             : ""
@@ -288,10 +289,13 @@ export default function CourseDetailPage({
                         <span className="text-xs font-mono text-slate-400 w-8 text-right flex-shrink-0">
                           {topic.topic_number}
                         </span>
-                        <span className="text-slate-700 dark:text-slate-300">
+                        <span className="text-slate-700 dark:text-slate-300 flex-1">
                           {topic.title}
                         </span>
-                      </div>
+                        <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          {t("Study")}
+                        </span>
+                      </Link>
                     ))}
                   </div>
                 )}

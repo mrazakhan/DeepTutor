@@ -21,6 +21,7 @@ from src.api.routers import (
     settings,
     solve,
     system,
+    tutor,
 )
 from src.logging import get_logger
 
@@ -203,6 +204,7 @@ app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(config.router, prefix="/api/v1/config", tags=["config"])
 app.include_router(agent_config.router, prefix="/api/v1/agent-config", tags=["agent-config"])
 app.include_router(courses.router, prefix="/api/v1/courses", tags=["courses"])
+app.include_router(tutor.router, prefix="/api/v1/tutor", tags=["tutor"])
 
 
 @app.get("/")
