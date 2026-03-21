@@ -207,7 +207,7 @@ app.include_router(courses.router, prefix="/api/v1/courses", tags=["courses"])
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to DeepTutor API"}
+    return {"message": "Welcome to DeepTutor++ API"}
 
 
 if __name__ == "__main__":

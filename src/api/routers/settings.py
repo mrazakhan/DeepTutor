@@ -30,7 +30,7 @@ DEFAULT_SIDEBAR_NAV_ORDER = {
 DEFAULT_UI_SETTINGS = {
     "theme": "light",
     "language": "en",
-    "sidebar_description": "DeepTutor++ AP Academy",
+    "sidebar_description": "DeepTutor++",
     "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
 }
 

@@ -15,8 +15,8 @@ const font = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "DeepTutor Platform",
-  description: "Multi-Agent Teaching & Research Copilot",
+  title: "DeepTutor++",
+  description: "AI-Powered Learning Platform",
 };
 
 export default function RootLayout({
