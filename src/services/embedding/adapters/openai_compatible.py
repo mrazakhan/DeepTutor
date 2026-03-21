@@ -30,11 +30,15 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         payload = {
             "input": request.texts,
             "model": request.model or self.model,
-            "encoding_format": request.encoding_format or "float",
         }
 
-        if request.dimensions or self.dimensions:
-            payload["dimensions"] = request.dimensions or self.dimensions
+        # Only include encoding_format and dimensions for providers that support them.
+        # Voyage AI rejects both 'encoding_format' and 'dimensions'.
+        is_voyage = "voyageai.com" in (self.base_url or "")
+        if not is_voyage:
+            payload["encoding_format"] = request.encoding_format or "float"
+            if request.dimensions or self.dimensions:
+                payload["dimensions"] = request.dimensions or self.dimensions
 
         url = f"{self.base_url.rstrip('/')}/embeddings"
         if self.api_version:
