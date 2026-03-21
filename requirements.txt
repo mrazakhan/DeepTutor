@@ -71,6 +71,11 @@ PyMuPDF>=1.26.0      # For PDF text extraction (fast and reliable)
 # faiss-gpu>=1.7.4   # Uncomment if you have GPU and want GPU acceleration
 
 # ============================================
+# AP Academy - Database
+# ============================================
+SQLAlchemy>=2.0.0
+
+# ============================================
 # Development and testing tools
 # ============================================
 pytest>=7.0.0              # Testing framework

@@ -1,0 +1,305 @@
+"use client";
+
+import { useState, useEffect, use } from "react";
+import Link from "next/link";
+import { useTranslation } from "react-i18next";
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  FileText,
+  GraduationCap,
+} from "lucide-react";
+import { apiUrl } from "@/lib/api";
+
+interface TopicDetail {
+  id: string;
+  topic_number: string;
+  title: string;
+  description: string | null;
+}
+
+interface UnitDetail {
+  id: string;
+  unit_number: number;
+  title: string;
+  big_idea: string | null;
+  description: string | null;
+  topic_count: number;
+  topics: TopicDetail[];
+}
+
+interface ExamSection {
+  name: string;
+  count: number;
+  minutes: number;
+  calculator?: boolean;
+}
+
+interface CourseDetail {
+  id: string;
+  code: string;
+  name: string;
+  subject_area: string;
+  description: string;
+  exam_format: { sections: ExamSection[]; reference?: string; note?: string } | null;
+  units: UnitDetail[];
+}
+
+export default function CourseDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const { t } = useTranslation();
+  const [course, setCourse] = useState<CourseDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchCourse();
+  }, [id]);
+
+  async function fetchCourse() {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/courses/${id}`));
+      if (!res.ok) throw new Error("Not found");
+      const data = await res.json();
+      setCourse(data);
+      // Auto-expand first unit
+      if (data.units.length > 0) {
+        setExpandedUnits(new Set([data.units[0].id]));
+      }
+    } catch (err) {
+      console.error("Failed to fetch course:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleUnit(unitId: string) {
+    setExpandedUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(unitId)) {
+        next.delete(unitId);
+      } else {
+        next.add(unitId);
+      }
+      return next;
+    });
+  }
+
+  function expandAll() {
+    if (!course) return;
+    setExpandedUnits(new Set(course.units.map((u) => u.id)));
+  }
+
+  function collapseAll() {
+    setExpandedUnits(new Set());
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-slate-400">
+        <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!course) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+        <p>{t("Course not found")}</p>
+        <Link href="/courses" className="text-blue-500 hover:underline text-sm">
+          {t("Back to catalog")}
+        </Link>
+      </div>
+    );
+  }
+
+  const totalTopics = course.units.reduce((sum, u) => sum + u.topic_count, 0);
+  const totalExamMinutes = course.exam_format?.sections.reduce(
+    (sum, s) => sum + s.minutes,
+    0,
+  );
+
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-8">
+      {/* Back link */}
+      <Link
+        href="/courses"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 mb-6 transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        {t("All Courses")}
+      </Link>
+
+      {/* Course Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+            {course.subject_area.replace("_", " ")}
+          </span>
+          <span className="text-xs text-slate-400">{course.code.replace(/_/g, " ")}</span>
+        </div>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-3">
+          {course.name}
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
+          {course.description}
+        </p>
+      </div>
+
+      {/* Stats Bar */}
+      <div className="flex flex-wrap gap-6 mb-8 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-blue-500" />
+          <span className="text-sm text-slate-600 dark:text-slate-300">
+            <strong>{course.units.length}</strong> {t("units")}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-emerald-500" />
+          <span className="text-sm text-slate-600 dark:text-slate-300">
+            <strong>{totalTopics}</strong> {t("topics")}
+          </span>
+        </div>
+        {totalExamMinutes && (
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-500" />
+            <span className="text-sm text-slate-600 dark:text-slate-300">
+              {t("Exam")}: <strong>{totalExamMinutes}</strong> {t("minutes")}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Exam Format */}
+      {course.exam_format && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+            <GraduationCap className="w-5 h-5 text-blue-500" />
+            {t("AP Exam Format")}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {course.exam_format.sections.map((section, i) => (
+              <div
+                key={i}
+                className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+              >
+                <div className="font-medium text-slate-800 dark:text-slate-200 text-sm mb-1">
+                  {section.name}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
+                  <div>
+                    {section.count} {t("questions")} &middot; {section.minutes} {t("minutes")}
+                  </div>
+                  {section.calculator !== undefined && (
+                    <div>
+                      {section.calculator
+                        ? t("Calculator permitted")
+                        : t("No calculator")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {course.exam_format.reference && (
+            <p className="text-xs text-slate-400 mt-2">
+              {t("Reference provided")}: {course.exam_format.reference}
+            </p>
+          )}
+          {course.exam_format.note && (
+            <p className="text-xs text-slate-400 mt-2">{course.exam_format.note}</p>
+          )}
+        </div>
+      )}
+
+      {/* Units & Topics */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+            {t("Course Content")}
+          </h2>
+          <div className="flex gap-2 text-xs">
+            <button
+              onClick={expandAll}
+              className="text-blue-500 hover:text-blue-600 transition-colors"
+            >
+              {t("Expand all")}
+            </button>
+            <span className="text-slate-300">|</span>
+            <button
+              onClick={collapseAll}
+              className="text-blue-500 hover:text-blue-600 transition-colors"
+            >
+              {t("Collapse all")}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {course.units.map((unit) => {
+            const isExpanded = expandedUnits.has(unit.id);
+            return (
+              <div
+                key={unit.id}
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden"
+              >
+                {/* Unit Header */}
+                <button
+                  onClick={() => toggleUnit(unit.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-semibold text-sm flex-shrink-0">
+                    {unit.unit_number}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-800 dark:text-slate-200 text-sm">
+                      {t("Unit")} {unit.unit_number}: {unit.title}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      {unit.topic_count} {t("topics")}
+                    </div>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  )}
+                </button>
+
+                {/* Topics */}
+                {isExpanded && (
+                  <div className="border-t border-slate-100 dark:border-slate-700">
+                    {unit.topics.map((topic, idx) => (
+                      <div
+                        key={topic.id}
+                        className={`flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors ${
+                          idx < unit.topics.length - 1
+                            ? "border-b border-slate-50 dark:border-slate-700/50"
+                            : ""
+                        }`}
+                      >
+                        <span className="text-xs font-mono text-slate-400 w-8 text-right flex-shrink-0">
+                          {topic.topic_number}
+                        </span>
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {topic.title}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

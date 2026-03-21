@@ -24,6 +24,7 @@ import {
   GripVertical,
   Check,
   X,
+  Library,
   LucideIcon,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
@@ -41,6 +42,7 @@ interface NavItem {
 // All available navigation items (static reference)
 const ALL_NAV_ITEMS: Record<string, { icon: LucideIcon; nameKey: string }> = {
   "/": { icon: Home, nameKey: "Home" },
+  "/courses": { icon: Library, nameKey: "AP Courses" },
   "/history": { icon: History, nameKey: "History" },
   "/knowledge": { icon: BookOpen, nameKey: "Knowledge Bases" },
   "/notebook": { icon: Book, nameKey: "Notebooks" },
