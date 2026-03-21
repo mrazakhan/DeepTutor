@@ -245,7 +245,7 @@ export default function Sidebar() {
                     : "opacity-100"
                 }`}
               >
-                DeepTutor
+                DeepTutor++
               </h1>
             </div>
             <div
