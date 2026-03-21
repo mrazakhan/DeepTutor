@@ -35,7 +35,25 @@ COURSE_CONTENT = {
                 "name": "Think Java 2 (AP CSA Textbook)",
                 "url": "https://greenteapress.com/thinkjava7/thinkjava2.pdf",
                 "filename": "think_java_2.pdf",
+                "license": "CC BY-NC-SA 4.0",
+            },
+            {
+                "name": "Intro to Programming Using Java (Eck)",
+                "url": "https://math.hws.edu/eck/cs124/downloads/javanotes7-linked.pdf",
+                "filename": "javanotes7.pdf",
                 "license": "CC BY-NC-SA 3.0",
+            },
+            {
+                "name": "AP CSA Course & Exam Description",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-computer-science-a-course-and-exam-description-effective-fall-2025.pdf",
+                "filename": "ap_csa_ced.pdf",
+                "license": "College Board public",
+            },
+            {
+                "name": "AP CSA Java Quick Reference",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-computer-science-a-java-quick-reference.pdf",
+                "filename": "ap_csa_java_quick_ref.pdf",
+                "license": "College Board public",
             },
         ],
     },
@@ -48,6 +66,12 @@ COURSE_CONTENT = {
                 "filename": "blown_to_bits.pdf",
                 "license": "CC BY-NC-SA 4.0",
             },
+            {
+                "name": "AP CSP Course & Exam Description",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-computer-science-principles-course-and-exam-description.pdf",
+                "filename": "ap_csp_ced.pdf",
+                "license": "College Board public",
+            },
         ],
     },
     # Math
@@ -56,9 +80,15 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Calculus Volume 1",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/CalculusVolume1-OP_i6tQ7hb.pdf",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Calculus_Volume_1_-_WEB_68M1Z5W.pdf",
                 "filename": "openstax_calculus_vol1.pdf",
                 "license": "CC BY 4.0",
+            },
+            {
+                "name": "AP Calculus AB/BC Course & Exam Description",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-calculus-ab-and-bc-course-and-exam-description.pdf",
+                "filename": "ap_calc_ab_bc_ced.pdf",
+                "license": "College Board public",
             },
         ],
     },
@@ -67,9 +97,15 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "OpenStax Calculus Volume 2",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/CalculusVolume2-OP_6KMlrbp.pdf",
+                "url": "https://d3bxy9euw4e147.cloudfront.net/oscms-prodcms/media/documents/CalculusVolume2-OP_esPpXTB.pdf",
                 "filename": "openstax_calculus_vol2.pdf",
                 "license": "CC BY 4.0",
+            },
+            {
+                "name": "AP Calculus AB/BC Course & Exam Description",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-calculus-ab-and-bc-course-and-exam-description.pdf",
+                "filename": "ap_calc_ab_bc_ced.pdf",
+                "license": "College Board public",
             },
         ],
     },
@@ -77,10 +113,16 @@ COURSE_CONTENT = {
         "name": "AP Statistics",
         "sources": [
             {
-                "name": "OpenStax Introductory Statistics",
-                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/IntroductoryStatistics-OP_i6tQ7hb.pdf",
-                "filename": "openstax_statistics.pdf",
+                "name": "OpenStax Introductory Statistics 2e",
+                "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Introductory_Statistics_2e_-_WEB.pdf",
+                "filename": "openstax_statistics_2e.pdf",
                 "license": "CC BY 4.0",
+            },
+            {
+                "name": "AP Statistics Course & Exam Description",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-statistics-course-and-exam-description.pdf",
+                "filename": "ap_stats_ced.pdf",
+                "license": "College Board public",
             },
         ],
     },
@@ -92,6 +134,12 @@ COURSE_CONTENT = {
                 "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Precalculus2e-WEB_Rea8mN8.pdf",
                 "filename": "openstax_precalculus_2e.pdf",
                 "license": "CC BY 4.0",
+            },
+            {
+                "name": "AP Precalculus Course & Exam Description",
+                "url": "https://apcentral.collegeboard.org/media/pdf/ap-precalculus-course-and-exam-description.pdf",
+                "filename": "ap_precalc_ced.pdf",
+                "license": "College Board public",
             },
         ],
     },
