@@ -82,6 +82,7 @@ services:
       # This ensures all outputs go to your local ./data directory
       - ./data/user:/app/data/user
       - ./data/knowledge_bases:/app/data/knowledge_bases
+      - ./data/course_content:/app/data/course_content
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8001}/"]
