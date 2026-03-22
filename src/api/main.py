@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api.routers import (
     agent_config,
+    auth,
     chat,
     co_writer,
     config,
@@ -203,6 +204,7 @@ app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"]
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(config.router, prefix="/api/v1/config", tags=["config"])
 app.include_router(agent_config.router, prefix="/api/v1/agent-config", tags=["agent-config"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(courses.router, prefix="/api/v1/courses", tags=["courses"])
 app.include_router(tutor.router, prefix="/api/v1/tutor", tags=["tutor"])
 

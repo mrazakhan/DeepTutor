@@ -15,6 +15,7 @@ import {
   Send,
   User,
   BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import { processLatexContent } from "@/lib/latex";
@@ -44,6 +45,21 @@ interface CourseInfo {
   name: string;
 }
 
+interface PreloadedContent {
+  intro?: string;
+  practice?: string;
+  exam?: string;
+  mistakes?: string;
+}
+
+// Map suggestion buttons to preloaded content keys
+const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: keyof PreloadedContent }[] = [
+  { label: (t) => `Explain ${t} step by step`, key: "intro" },
+  { label: () => "Give me a practice question", key: "practice" },
+  { label: () => "How does this appear on the AP exam?", key: "exam" },
+  { label: () => "What are common mistakes students make?", key: "mistakes" },
+];
+
 export default function StudyPage({
   params,
 }: {
@@ -64,6 +80,7 @@ export default function StudyPage({
   const [currentStage, setCurrentStage] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
+  const [preloadedContent, setPreloadedContent] = useState<PreloadedContent | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -105,6 +122,40 @@ export default function StudyPage({
     }
     loadInfo();
   }, [courseId, topicId, unitId]);
+
+  // Load preloaded content for this topic
+  useEffect(() => {
+    if (!topicId) return;
+    async function loadPreloaded() {
+      try {
+        const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/content`));
+        if (res.ok) {
+          const data = await res.json();
+          if (data.content) {
+            setPreloadedContent(data.content);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load preloaded content:", err);
+      }
+    }
+    loadPreloaded();
+  }, [courseId, topicId]);
+
+  // Handle suggestion button click — use preloaded content if available
+  function handleSuggestion(label: string, key: keyof PreloadedContent) {
+    if (preloadedContent && preloadedContent[key]) {
+      // Show instantly from preloaded cache
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: label },
+        { role: "assistant", content: preloadedContent[key]! },
+      ]);
+    } else {
+      // Fall back to live AI generation
+      sendMessage(label);
+    }
+  }
 
   const sendMessage = useCallback(
     (message: string) => {
@@ -271,21 +322,31 @@ export default function StudyPage({
               {t("Ask me anything about this topic. I can explain concepts, give practice questions, or help you prepare for the AP exam.")}
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
-              {[
-                `Explain ${topic?.title || "this topic"} step by step`,
-                "Give me a practice question",
-                "How does this appear on the AP exam?",
-                "What are common mistakes students make?",
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  onClick={() => sendMessage(suggestion)}
-                  className="text-xs px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 hover:border-blue-200 transition-colors"
-                >
-                  {suggestion}
-                </button>
-              ))}
+              {SUGGESTION_KEYS.map(({ label, key }) => {
+                const text = label(topic?.title || "this topic");
+                const hasPreloaded = preloadedContent && preloadedContent[key];
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleSuggestion(text, key)}
+                    className={`text-xs px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1.5 ${
+                      hasPreloaded
+                        ? "border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 hover:border-blue-200"
+                    }`}
+                  >
+                    {hasPreloaded && <Sparkles className="w-3 h-3" />}
+                    {text}
+                  </button>
+                );
+              })}
             </div>
+            {preloadedContent && (
+              <p className="text-xs text-purple-400 mt-3 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                {t("Purple buttons have instant pre-generated answers")}
+              </p>
+            )}
           </div>
         )}
 
