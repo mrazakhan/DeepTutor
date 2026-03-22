@@ -1,13 +1,22 @@
 """AP Academy Course Catalog API router."""
 
 import json
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 
 from src.database.engine import get_db, init_db
-from src.database.models import Course, Unit, Topic
+from src.database.models import Course, Topic, TopicContent, Unit
+from src.logging import get_logger
+
+logger = get_logger("CoursesAPI")
 
 router = APIRouter()
+
+
+class PreloadRequest(BaseModel):
+    generated_by: str | None = None
 
 # Ensure tables exist on import
 init_db()
@@ -168,6 +177,190 @@ async def get_topic(course_id: str, topic_id: str):
                 }
                 for lo in topic.learning_objectives
             ],
+        }
+    finally:
+        db.close()
+
+
+@router.get("/{course_id}/content-status")
+async def get_content_status(course_id: str):
+    """Return which topics have preloaded content: {topic_id: true/false}."""
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        status = {}
+        for unit in course.units:
+            for topic in unit.topics:
+                has_content = (
+                    db.query(TopicContent)
+                    .filter(TopicContent.topic_id == topic.id)
+                    .first()
+                    is not None
+                )
+                status[topic.id] = has_content
+        return status
+    finally:
+        db.close()
+
+
+@router.get("/{course_id}/topics/{topic_id}/content")
+async def get_topic_content(course_id: str, topic_id: str):
+    """Get preloaded content for a topic (JSON with intro/practice/exam/mistakes)."""
+    db = get_db()
+    try:
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        if not topic or topic.unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        tc = db.query(TopicContent).filter(TopicContent.topic_id == topic_id).first()
+        if not tc:
+            return {"topic_id": topic_id, "content": None}
+
+        return {
+            "topic_id": tc.topic_id,
+            "content": json.loads(tc.content),
+            "generated_by": tc.generated_by,
+            "created_at": tc.created_at.isoformat() if tc.created_at else None,
+        }
+    finally:
+        db.close()
+
+
+# Prompts for each content type
+_CONTENT_PROMPTS = {
+    "intro": (
+        "Provide a comprehensive introduction to the topic '{topic_title}' "
+        "(Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+        "in {course_name}. Cover the key concepts, why they matter for the AP exam, "
+        "and give a clear explanation suitable for a student seeing this for the first time. "
+        "Use markdown formatting with headers, bullet points, and examples where appropriate."
+    ),
+    "practice": (
+        "Create a challenging but fair practice question about '{topic_title}' "
+        "(Topic {topic_number}) from Unit {unit_number}: {unit_title} in {course_name}. "
+        "Include the question, answer choices (if multiple choice), the correct answer, "
+        "and a detailed step-by-step explanation of why each answer is correct or incorrect. "
+        "Make it representative of what students would see on the AP exam."
+    ),
+    "exam": (
+        "Explain how the topic '{topic_title}' (Topic {topic_number}) from "
+        "Unit {unit_number}: {unit_title} in {course_name} appears on the AP exam. "
+        "Cover: what types of questions test this topic (MCQ vs FRQ), how frequently "
+        "it appears, what specific skills are tested, and any connections to other topics. "
+        "Give concrete examples of how exam questions are framed around this topic."
+    ),
+    "mistakes": (
+        "What are the most common mistakes and misconceptions students have about "
+        "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+        "in {course_name}? For each mistake, explain: what students get wrong, why they "
+        "get confused, and how to avoid the error. Include specific examples that "
+        "illustrate the correct vs incorrect approach."
+    ),
+}
+
+
+@router.post("/{course_id}/topics/{topic_id}/preload")
+async def preload_topic_content(
+    course_id: str,
+    topic_id: str,
+    body: PreloadRequest | None = None,
+):
+    """Generate and store all 4 content types for a topic using the TutorAgent."""
+    db = get_db()
+    try:
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        if not topic or topic.unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        # Check if already generated
+        existing = db.query(TopicContent).filter(TopicContent.topic_id == topic_id).first()
+        if existing:
+            return {
+                "topic_id": existing.topic_id,
+                "content": json.loads(existing.content),
+                "generated_by": existing.generated_by,
+                "already_existed": True,
+            }
+
+        course = topic.unit.course
+        unit = topic.unit
+
+        # Initialize TutorAgent
+        from src.agents.tutor import TutorAgent
+        from src.services.llm.config import get_llm_config
+
+        try:
+            llm_config = get_llm_config()
+            api_key = llm_config.api_key
+            base_url = llm_config.base_url
+            api_version = getattr(llm_config, "api_version", None)
+        except Exception:
+            api_key = None
+            base_url = None
+            api_version = None
+
+        project_root = Path(__file__).parent.parent.parent.parent
+        from src.services.config import load_config_with_main
+        config = load_config_with_main("solve_config.yaml", project_root)
+
+        agent = TutorAgent(
+            course_code=course.code,
+            course_name=course.name,
+            language="en",
+            config=config,
+            api_key=api_key,
+            base_url=base_url,
+            api_version=api_version,
+        )
+
+        fmt = {
+            "topic_title": topic.title,
+            "topic_number": topic.topic_number,
+            "unit_number": unit.unit_number,
+            "unit_title": unit.title,
+            "course_name": course.name,
+        }
+
+        # Generate all 4 content types sequentially
+        content_dict = {}
+        for key, prompt_template in _CONTENT_PROMPTS.items():
+            prompt = prompt_template.format(**fmt)
+            logger.info(f"Generating '{key}' for topic {topic.topic_number} {topic.title}...")
+
+            result = await agent.process(
+                message=prompt,
+                history=[],
+                topic_title=topic.title,
+                unit_title=unit.title,
+                unit_number=unit.unit_number,
+                stream=False,
+            )
+            content_dict[key] = result.get("response", "")
+
+        if not any(content_dict.values()):
+            raise HTTPException(status_code=500, detail="Failed to generate content")
+
+        # Save to DB as JSON
+        generated_by = body.generated_by if body else None
+        tc = TopicContent(
+            topic_id=topic_id,
+            content=json.dumps(content_dict),
+            generated_by=generated_by,
+        )
+        db.add(tc)
+        db.commit()
+        db.refresh(tc)
+
+        logger.info(f"Preloaded all content for topic {topic_id} ({topic.title})")
+
+        return {
+            "topic_id": tc.topic_id,
+            "content": content_dict,
+            "generated_by": tc.generated_by,
+            "already_existed": False,
         }
     finally:
         db.close()

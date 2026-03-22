@@ -13,8 +13,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+import hashlib
+
 from src.database.engine import init_db, get_db
-from src.database.models import Course, Unit, Topic, LearningObjective
+from src.database.models import Course, Unit, Topic, LearningObjective, User
 
 # ──────────────────────────────────────────────────
 # AP Course Definitions
@@ -1155,5 +1157,48 @@ def seed_all_courses():
         db.close()
 
 
+def _hash_password(password: str) -> str:
+    """Simple SHA-256 hash for test users. Replace with bcrypt for production."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+TEST_USERS = [
+    {"username": "student1", "password": "test1234", "display_name": "Test Student", "role": "student"},
+    {"username": "admin1", "password": "admin1234", "display_name": "Test Admin", "role": "admin"},
+]
+
+
+def seed_test_users():
+    """Seed test users into the database."""
+    init_db()
+    db = get_db()
+
+    try:
+        existing = db.query(User).count()
+        if existing > 0:
+            print(f"Database already has {existing} users. Skipping user seed.")
+            return
+
+        for user_data in TEST_USERS:
+            user = User(
+                username=user_data["username"],
+                password_hash=_hash_password(user_data["password"]),
+                display_name=user_data["display_name"],
+                role=user_data["role"],
+            )
+            db.add(user)
+            print(f"  Seeded user: {user.username} ({user.role})")
+
+        db.commit()
+        print(f"Done! Seeded {len(TEST_USERS)} test users.")
+    except Exception as e:
+        db.rollback()
+        print(f"Error seeding users: {e}")
+        raise
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     seed_all_courses()
+    seed_test_users()

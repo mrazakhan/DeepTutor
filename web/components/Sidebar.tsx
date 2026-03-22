@@ -28,6 +28,7 @@ import {
   LucideIcon,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
+import { useAuth } from "@/lib/auth";
 
 const SIDEBAR_EXPANDED_WIDTH = 256;
 const SIDEBAR_COLLAPSED_WIDTH = 64;
@@ -65,6 +66,7 @@ export default function Sidebar() {
     setSidebarNavOrder,
   } = useGlobal();
   const { t } = useTranslation();
+  const { user, logout } = useAuth();
 
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
 
@@ -486,6 +488,46 @@ export default function Sidebar() {
             </div>
           )}
         </div>
+
+        {/* User info */}
+        {user ? (
+          <div
+            className={`flex items-center rounded-md text-slate-500 dark:text-slate-400 ${
+              sidebarCollapsed ? "justify-center p-2" : "gap-2.5 px-2 py-2"
+            }`}
+          >
+            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
+              {user.display_name[0]}
+            </div>
+            {!sidebarCollapsed && (
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">
+                  {user.display_name}
+                </div>
+                <button
+                  onClick={logout}
+                  className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                >
+                  {t("Sign out")}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            className={`flex items-center rounded-md text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 hover:text-blue-500 transition-all duration-200 ${
+              sidebarCollapsed ? "justify-center p-2" : "gap-2.5 px-2 py-2"
+            }`}
+          >
+            <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-xs">
+              👤
+            </div>
+            {!sidebarCollapsed && (
+              <span className="text-sm">{t("Sign in")}</span>
+            )}
+          </Link>
+        )}
 
         {/* Expand/Collapse button at bottom */}
         <button

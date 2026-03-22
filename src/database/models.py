@@ -73,6 +73,8 @@ class Topic(Base):
     unit = relationship("Unit", back_populates="topics")
     learning_objectives = relationship("LearningObjective", back_populates="topic",
                                        cascade="all, delete-orphan")
+    preloaded_content = relationship("TopicContent", back_populates="topic",
+                                     uselist=False, cascade="all, delete-orphan")
 
 
 class LearningObjective(Base):
@@ -85,3 +87,38 @@ class LearningObjective(Base):
     skill_category = Column(String(50))
 
     topic = relationship("Topic", back_populates="learning_objectives")
+
+
+class TopicContent(Base):
+    """Pre-generated topic content, shared across all users.
+
+    The `content` column stores a JSON object with keys:
+      - intro: "Explain <topic> step by step"
+      - practice: "Give me a practice question"
+      - exam: "How does this appear on the AP exam?"
+      - mistakes: "What are common mistakes students make?"
+    """
+
+    __tablename__ = "topic_content"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    topic_id = Column(String, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False, unique=True)
+    content = Column(Text, nullable=False)  # JSON: {intro, practice, exam, mistakes}
+    generated_by = Column(String(100))  # Username who triggered generation
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    topic = relationship("Topic", back_populates="preloaded_content")
+
+
+class User(Base):
+    """Simple user model for authentication."""
+
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    username = Column(String(50), unique=True, nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    display_name = Column(String(100), nullable=False)
+    role = Column(String(20), nullable=False, default="student")  # student | admin
+    created_at = Column(DateTime, default=utcnow)

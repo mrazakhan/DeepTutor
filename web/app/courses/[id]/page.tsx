@@ -6,11 +6,15 @@ import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
   BookOpen,
+  Check,
   ChevronDown,
   ChevronRight,
   Clock,
+  Download,
   FileText,
   GraduationCap,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 
@@ -58,9 +62,13 @@ export default function CourseDetailPage({
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
+  const [contentStatus, setContentStatus] = useState<Record<string, boolean>>({});
+  const [loadingTopics, setLoadingTopics] = useState<Set<string>>(new Set());
+  const [preloadingAll, setPreloadingAll] = useState(false);
 
   useEffect(() => {
     fetchCourse();
+    fetchContentStatus();
   }, [id]);
 
   async function fetchCourse() {
@@ -78,6 +86,72 @@ export default function CourseDetailPage({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function fetchContentStatus() {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/courses/${id}/content-status`));
+      if (res.ok) {
+        const data = await res.json();
+        setContentStatus(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch content status:", err);
+    }
+  }
+
+  async function preloadTopic(topicId: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (loadingTopics.has(topicId) || contentStatus[topicId]) return;
+
+    setLoadingTopics((prev) => new Set([...prev, topicId]));
+    try {
+      const res = await fetch(
+        apiUrl(`/api/v1/courses/${id}/topics/${topicId}/preload`),
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
+      );
+      if (res.ok) {
+        setContentStatus((prev) => ({ ...prev, [topicId]: true }));
+      }
+    } catch (err) {
+      console.error("Failed to preload topic:", err);
+    } finally {
+      setLoadingTopics((prev) => {
+        const next = new Set(prev);
+        next.delete(topicId);
+        return next;
+      });
+    }
+  }
+
+  async function preloadAll() {
+    if (!course || preloadingAll) return;
+    setPreloadingAll(true);
+    for (const unit of course.units) {
+      for (const topic of unit.topics) {
+        if (contentStatus[topic.id]) continue;
+        setLoadingTopics((prev) => new Set([...prev, topic.id]));
+        try {
+          const res = await fetch(
+            apiUrl(`/api/v1/courses/${id}/topics/${topic.id}/preload`),
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
+          );
+          if (res.ok) {
+            setContentStatus((prev) => ({ ...prev, [topic.id]: true }));
+          }
+        } catch (err) {
+          console.error(`Failed to preload topic ${topic.id}:`, err);
+        } finally {
+          setLoadingTopics((prev) => {
+            const next = new Set(prev);
+            next.delete(topic.id);
+            return next;
+          });
+        }
+      }
+    }
+    setPreloadingAll(false);
   }
 
   function toggleUnit(unitId: string) {
@@ -225,7 +299,21 @@ export default function CourseDetailPage({
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
             {t("Course Content")}
           </h2>
-          <div className="flex gap-2 text-xs">
+          <div className="flex gap-2 text-xs items-center">
+            <button
+              onClick={preloadAll}
+              disabled={preloadingAll}
+              className="inline-flex items-center gap-1 text-purple-500 hover:text-purple-600 transition-colors disabled:opacity-50"
+              title="Generate intro content for all topics"
+            >
+              {preloadingAll ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Sparkles className="w-3 h-3" />
+              )}
+              {preloadingAll ? t("Preloading...") : t("Preload all")}
+            </button>
+            <span className="text-slate-300">|</span>
             <button
               onClick={expandAll}
               className="text-blue-500 hover:text-blue-600 transition-colors"
@@ -277,10 +365,9 @@ export default function CourseDetailPage({
                 {isExpanded && (
                   <div className="border-t border-slate-100 dark:border-slate-700">
                     {unit.topics.map((topic, idx) => (
-                      <Link
+                      <div
                         key={topic.id}
-                        href={`/courses/${id}/study?topicId=${topic.id}&unitId=${unit.id}`}
-                        className={`flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer group ${
+                        className={`flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors group ${
                           idx < unit.topics.length - 1
                             ? "border-b border-slate-50 dark:border-slate-700/50"
                             : ""
@@ -289,13 +376,45 @@ export default function CourseDetailPage({
                         <span className="text-xs font-mono text-slate-400 w-8 text-right flex-shrink-0">
                           {topic.topic_number}
                         </span>
-                        <span className="text-slate-700 dark:text-slate-300 flex-1">
+                        <Link
+                          href={`/courses/${id}/study?topicId=${topic.id}&unitId=${unit.id}`}
+                          className="text-slate-700 dark:text-slate-300 flex-1 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                        >
                           {topic.title}
-                        </span>
-                        <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        </Link>
+                        <button
+                          onClick={(e) => preloadTopic(topic.id, e)}
+                          disabled={loadingTopics.has(topic.id) || contentStatus[topic.id]}
+                          className={`p-1 rounded transition-colors flex-shrink-0 ${
+                            contentStatus[topic.id]
+                              ? "text-emerald-500 cursor-default"
+                              : loadingTopics.has(topic.id)
+                              ? "text-purple-400"
+                              : "text-slate-300 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                          }`}
+                          title={
+                            contentStatus[topic.id]
+                              ? "Content preloaded"
+                              : loadingTopics.has(topic.id)
+                              ? "Generating..."
+                              : "Preload intro content"
+                          }
+                        >
+                          {loadingTopics.has(topic.id) ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : contentStatus[topic.id] ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <Link
+                          href={`/courses/${id}/study?topicId=${topic.id}&unitId=${unit.id}`}
+                          className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                        >
                           {t("Study")}
-                        </span>
-                      </Link>
+                        </Link>
+                      </div>
                     ))}
                   </div>
                 )}
