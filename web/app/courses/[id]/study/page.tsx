@@ -633,6 +633,9 @@ export default function StudyPage({
     ? `Unit ${unit.unit_number}: ${unit.title}`
     : "";
 
+  // Whether to show the right-side code editor panel
+  const showEditorPanel = !!(activeFRQ && !showFRQSolution) || (showInlineEditor && !isLoading);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -724,6 +727,10 @@ export default function StudyPage({
         )}
       </div>
 
+      {/* Main content: messages + optional right-side editor */}
+      <div className="flex flex-1 overflow-hidden">
+      {/* Messages column */}
+      <div className="flex flex-col flex-1 min-w-0">
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
@@ -890,7 +897,7 @@ export default function StudyPage({
           </div>
         )}
 
-        {/* Interactive FRQ */}
+        {/* FRQ question shown in chat (without editor — editor is on the right panel) */}
         {activeFRQ && !showFRQSolution && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -903,41 +910,14 @@ export default function StudyPage({
                   {activeFRQ.frq_type && ` • ${activeFRQ.frq_type}`}
                 </span>
               </div>
-              <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
+              <div className="prose prose-sm dark:prose-invert max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {processLatexContent(activeFRQ.question)}
                 </ReactMarkdown>
               </div>
-              <div className="mb-3">
-                <label className="text-xs text-slate-500 mb-1 block">Write your Java code:</label>
-                <CodeEditor
-                  value={frqAnswer}
-                  onChange={setFrqAnswer}
-                  language="java"
-                  height="240px"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handleEvaluateFRQ}
-                  disabled={!frqAnswer.trim() || isLoading}
-                  className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {t("Evaluate My Code")}
-                </button>
-                <button
-                  onClick={handleSubmitFRQ}
-                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
-                >
-                  {t("Submit & View Solution")}
-                </button>
-                <button
-                  onClick={() => { setShowFRQSolution(true); handleSubmitFRQ(); }}
-                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                >
-                  {t("Skip — Show Solution")}
-                </button>
-              </div>
+              <p className="text-xs text-slate-400 mt-3 italic">
+                ← Write your solution in the editor panel on the right
+              </p>
             </div>
           </div>
         )}
@@ -954,42 +934,16 @@ export default function StudyPage({
           </div>
         )}
 
-        {/* Inline code editor for non-preloaded FRQ responses */}
+        {/* Hint for inline editor */}
         {showInlineEditor && !isLoading && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot className="w-4 h-4 text-green-500" />
             </div>
-            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs font-medium text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
-                  ✏️ {t("Write Your Solution")}
-                </span>
-              </div>
-              <div className="mb-3">
-                <label className="text-xs text-slate-500 mb-1 block">{t("Write your Java code:")}</label>
-                <CodeEditor
-                  value={inlineEditorCode}
-                  onChange={setInlineEditorCode}
-                  language="java"
-                  height="240px"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handleInlineEvaluate}
-                  disabled={!inlineEditorCode.trim() || isLoading}
-                  className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {t("Evaluate My Code")}
-                </button>
-                <button
-                  onClick={() => setShowInlineEditor(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                >
-                  {t("Dismiss")}
-                </button>
-              </div>
+            <div className="rounded-xl px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+              <p className="text-xs text-slate-400 italic">
+                ← Write your solution in the editor panel on the right
+              </p>
             </div>
           </div>
         )}
@@ -1037,6 +991,88 @@ export default function StudyPage({
           </button>
         </form>
       </div>
+      </div>{/* end messages column */}
+
+      {/* Right-side Code Editor Panel */}
+      {showEditorPanel && (
+        <div className="w-[480px] flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900">
+          {/* Editor header */}
+          <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500" />
+              {activeFRQ ? (
+                <>FRQ {frqIndex + 1}{activeFRQ.frq_type && ` — ${activeFRQ.frq_type}`}</>
+              ) : (
+                t("Write Your Solution")
+              )}
+            </span>
+            <button
+              onClick={() => {
+                if (activeFRQ) { setShowFRQSolution(true); setActiveFRQ(null); }
+                else { setShowInlineEditor(false); }
+              }}
+              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            >
+              ✕ {t("Close")}
+            </button>
+          </div>
+
+          {/* Editor body */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <label className="text-xs text-slate-500 mb-2 block">{t("Write your Java code:")}</label>
+            <CodeEditor
+              value={activeFRQ ? frqAnswer : inlineEditorCode}
+              onChange={activeFRQ ? setFrqAnswer : setInlineEditorCode}
+              language="java"
+              height="calc(100vh - 320px)"
+            />
+          </div>
+
+          {/* Editor actions */}
+          <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2">
+            {activeFRQ ? (
+              <>
+                <button
+                  onClick={handleEvaluateFRQ}
+                  disabled={!frqAnswer.trim() || isLoading}
+                  className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t("Evaluate My Code")}
+                </button>
+                <button
+                  onClick={handleSubmitFRQ}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  {t("View Solution")}
+                </button>
+                <button
+                  onClick={() => { setShowFRQSolution(true); handleSubmitFRQ(); }}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {t("Skip")}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handleInlineEvaluate}
+                  disabled={!inlineEditorCode.trim() || isLoading}
+                  className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t("Evaluate My Code")}
+                </button>
+                <button
+                  onClick={() => setShowInlineEditor(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {t("Dismiss")}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      </div>{/* end flex row */}
     </div>
   );
 }

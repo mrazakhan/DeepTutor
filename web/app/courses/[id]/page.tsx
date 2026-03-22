@@ -14,6 +14,7 @@ import {
   FileText,
   GraduationCap,
   Loader2,
+  RefreshCw,
   Sparkles,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
@@ -307,9 +308,9 @@ export default function CourseDetailPage({
               title="Generate intro content for all topics"
             >
               {preloadingAll ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Sparkles className="w-3 h-3" />
+                <RefreshCw className="w-3.5 h-3.5" />
               )}
               {preloadingAll ? t("Loading...") : t("Load All")}
             </button>
@@ -385,12 +386,12 @@ export default function CourseDetailPage({
                         <button
                           onClick={(e) => preloadTopic(topic.id, e)}
                           disabled={loadingTopics.has(topic.id) || contentStatus[topic.id]}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex-shrink-0 inline-flex items-center gap-1 ${
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${
                             contentStatus[topic.id]
-                              ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 cursor-default"
+                              ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 cursor-default"
                               : loadingTopics.has(topic.id)
                               ? "text-purple-500 bg-purple-50 dark:bg-purple-900/20"
-                              : "text-purple-600 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+                              : "text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
                           }`}
                           title={
                             contentStatus[topic.id]
@@ -401,11 +402,11 @@ export default function CourseDetailPage({
                           }
                         >
                           {loadingTopics.has(topic.id) ? (
-                            <><Loader2 className="w-3 h-3 animate-spin" /> Loading</>
+                            <Loader2 className="w-4 h-4 animate-spin" />
                           ) : contentStatus[topic.id] ? (
-                            <><Check className="w-3 h-3" /> Loaded</>
+                            <Check className="w-4 h-4" />
                           ) : (
-                            "Load"
+                            <RefreshCw className="w-3.5 h-3.5" />
                           )}
                         </button>
                         <Link
