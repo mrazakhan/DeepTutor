@@ -59,7 +59,7 @@ class BaseAgent(ABC):
         model: str | None = None,
         api_version: str | None = None,
         language: str = "zh",
-        binding: str = "openai",
+        binding: str | None = None,
         config: dict[str, Any] | None = None,
         token_tracker: Any | None = None,
         log_dir: str | None = None,
