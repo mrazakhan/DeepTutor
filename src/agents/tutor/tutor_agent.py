@@ -39,6 +39,7 @@ class TutorAgent(BaseAgent):
         language: str = "en",
         config: dict[str, Any] | None = None,
         max_history_tokens: int | None = None,
+        user_kb_name: str | None = None,
         **kwargs,
     ):
         super().__init__(
@@ -57,9 +58,12 @@ class TutorAgent(BaseAgent):
 
         # KB name: normalize DB code (AP_CSA) to KB name (ap-csa)
         self.kb_name = course_code.lower().replace("_", "-")
+        # Optional per-user KB for personal uploads
+        self.user_kb_name = user_kb_name
 
         self.logger.info(
             f"TutorAgent initialized: course={course_code}, kb={self.kb_name}"
+            + (f", user_kb={user_kb_name}" if user_kb_name else "")
         )
 
     def count_tokens(self, text: str) -> int:
@@ -91,8 +95,11 @@ class TutorAgent(BaseAgent):
         return truncated
 
     async def retrieve_context(self, message: str) -> tuple[str, list[dict]]:
-        """Retrieve context from the course-scoped knowledge base."""
+        """Retrieve context from the course KB and optional user KB."""
         sources = []
+        combined_context = ""
+
+        # 1. Search the shared course KB
         try:
             self.logger.info(f"RAG search in {self.kb_name}: {message[:50]}...")
             rag_result = await rag_search(
@@ -106,11 +113,33 @@ class TutorAgent(BaseAgent):
                     "kb_name": self.kb_name,
                     "content": rag_answer[:500] + "..." if len(rag_answer) > 500 else rag_answer,
                 })
-                return rag_answer, sources
+                combined_context += rag_answer
         except Exception as e:
             self.logger.warning(f"RAG search failed for {self.kb_name}: {e}")
 
-        return "", sources
+        # 2. Search user-specific KB if available
+        if self.user_kb_name:
+            try:
+                self.logger.info(f"RAG search in user KB {self.user_kb_name}: {message[:50]}...")
+                user_result = await rag_search(
+                    query=message,
+                    kb_name=self.user_kb_name,
+                    mode="hybrid",
+                )
+                user_answer = user_result.get("answer", "")
+                if user_answer:
+                    sources.append({
+                        "kb_name": self.user_kb_name,
+                        "content": user_answer[:500] + "..." if len(user_answer) > 500 else user_answer,
+                    })
+                    if combined_context:
+                        combined_context += "\n\n--- Personal Study Materials ---\n\n" + user_answer
+                    else:
+                        combined_context = user_answer
+            except Exception as e:
+                self.logger.warning(f"RAG search failed for user KB {self.user_kb_name}: {e}")
+
+        return combined_context, sources
 
     def build_system_prompt(
         self,

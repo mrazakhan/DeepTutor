@@ -16,6 +16,7 @@
     "audit:report": "playwright show-report"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "framer-motion": "^12.24.0",
