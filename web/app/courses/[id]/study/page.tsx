@@ -45,9 +45,16 @@ interface CourseInfo {
   name: string;
 }
 
+interface PracticeQuestion {
+  question: string;
+  options: Record<string, string>;
+  correct: string;
+  explanation: string;
+}
+
 interface PreloadedContent {
   intro?: string;
-  practice?: string;
+  practice?: string; // JSON string or markdown
   exam?: string;
   mistakes?: string;
 }
@@ -59,6 +66,23 @@ const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: keyof Prelo
   { label: () => "How does this appear on the AP exam?", key: "exam" },
   { label: () => "What are common mistakes students make?", key: "mistakes" },
 ];
+
+function parsePracticeQuestion(raw: string): PracticeQuestion | null {
+  try {
+    let cleaned = raw.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.split("\n", 1)[1] || cleaned.slice(3);
+      cleaned = cleaned.replace(/```\s*$/, "");
+    }
+    const parsed = JSON.parse(cleaned);
+    if (parsed.question && parsed.options && parsed.correct && parsed.explanation) {
+      return parsed as PracticeQuestion;
+    }
+  } catch {
+    // not structured JSON
+  }
+  return null;
+}
 
 export default function StudyPage({
   params,
@@ -81,6 +105,9 @@ export default function StudyPage({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [preloadedContent, setPreloadedContent] = useState<PreloadedContent | null>(null);
+  const [activePractice, setActivePractice] = useState<PracticeQuestion | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [showExplanation, setShowExplanation] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -145,6 +172,17 @@ export default function StudyPage({
   // Handle suggestion button click — use preloaded content if available
   function handleSuggestion(label: string, key: keyof PreloadedContent) {
     if (preloadedContent && preloadedContent[key]) {
+      if (key === "practice") {
+        // Try to parse as interactive question
+        const pq = parsePracticeQuestion(preloadedContent[key]!);
+        if (pq) {
+          setMessages((prev) => [...prev, { role: "user", content: label }]);
+          setActivePractice(pq);
+          setSelectedAnswer(null);
+          setShowExplanation(false);
+          return;
+        }
+      }
       // Show instantly from preloaded cache
       setMessages((prev) => [
         ...prev,
@@ -155,6 +193,24 @@ export default function StudyPage({
       // Fall back to live AI generation
       sendMessage(label);
     }
+  }
+
+  function handleAnswerSelect(letter: string) {
+    if (!activePractice || showExplanation) return;
+    setSelectedAnswer(letter);
+  }
+
+  function handleSubmitAnswer() {
+    if (!activePractice || !selectedAnswer) return;
+    setShowExplanation(true);
+    // Add the full Q&A as messages so it's part of the chat history
+    const isCorrect = selectedAnswer === activePractice.correct;
+    const resultMsg = isCorrect
+      ? `**Correct!** You selected **(${selectedAnswer})** ` + activePractice.options[selectedAnswer]
+      : `**Incorrect.** You selected **(${selectedAnswer})** ${activePractice.options[selectedAnswer]}.\nThe correct answer is **(${activePractice.correct})** ${activePractice.options[activePractice.correct]}`;
+    const fullExplanation = `${resultMsg}\n\n---\n\n${activePractice.explanation}`;
+    setMessages((prev) => [...prev, { role: "assistant", content: fullExplanation }]);
+    setActivePractice(null);
   }
 
   const sendMessage = useCallback(
@@ -390,6 +446,51 @@ export default function StudyPage({
             )}
           </div>
         ))}
+
+        {/* Interactive Practice Question */}
+        {activePractice && !showExplanation && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+              <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  {processLatexContent(activePractice.question)}
+                </ReactMarkdown>
+              </div>
+              <div className="space-y-2 mb-4">
+                {Object.entries(activePractice.options).map(([letter, text]) => (
+                  <button
+                    key={letter}
+                    onClick={() => handleAnswerSelect(letter)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
+                      selectedAnswer === letter
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500"
+                        : "border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/10"
+                    }`}
+                  >
+                    <span className="font-semibold mr-2">({letter})</span>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{ p: ({ children }) => <span>{children}</span> }}
+                    >
+                      {processLatexContent(text)}
+                    </ReactMarkdown>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleSubmitAnswer}
+                disabled={!selectedAnswer}
+                className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {t("Submit Answer")}
+              </button>
+            </div>
+          </div>
+        )}
 
         {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
           <div className="flex gap-3">
