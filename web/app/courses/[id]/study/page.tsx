@@ -45,44 +45,41 @@ interface CourseInfo {
   name: string;
 }
 
-interface PracticeQuestion {
+interface MCQuestion {
   question: string;
   options: Record<string, string>;
   correct: string;
   explanation: string;
+  raw_text?: string; // fallback if JSON parsing failed
+}
+
+interface FRQuestion {
+  question: string;
+  frq_type?: string;
+  sample_solution: string;
+  rubric?: string;
+  explanation: string;
+  raw_text?: string;
 }
 
 interface PreloadedContent {
   intro?: string;
-  practice?: string; // JSON string or markdown
+  practice?: string; // legacy single practice (backward compat)
+  practice_mcq?: MCQuestion[];
+  practice_frq?: FRQuestion[];
   exam?: string;
   mistakes?: string;
 }
 
-// Map suggestion buttons to preloaded content keys
-const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: keyof PreloadedContent }[] = [
+type SuggestionKey = "intro" | "practice_mcq" | "practice_frq" | "exam" | "mistakes";
+
+const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: SuggestionKey }[] = [
   { label: (t) => `Explain ${t} step by step`, key: "intro" },
-  { label: () => "Give me a practice question", key: "practice" },
+  { label: () => "Practice: Multiple Choice", key: "practice_mcq" },
+  { label: () => "Practice: Free Response", key: "practice_frq" },
   { label: () => "How does this appear on the AP exam?", key: "exam" },
   { label: () => "What are common mistakes students make?", key: "mistakes" },
 ];
-
-function parsePracticeQuestion(raw: string): PracticeQuestion | null {
-  try {
-    let cleaned = raw.trim();
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.split("\n", 1)[1] || cleaned.slice(3);
-      cleaned = cleaned.replace(/```\s*$/, "");
-    }
-    const parsed = JSON.parse(cleaned);
-    if (parsed.question && parsed.options && parsed.correct && parsed.explanation) {
-      return parsed as PracticeQuestion;
-    }
-  } catch {
-    // not structured JSON
-  }
-  return null;
-}
 
 export default function StudyPage({
   params,
@@ -105,9 +102,16 @@ export default function StudyPage({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [preloadedContent, setPreloadedContent] = useState<PreloadedContent | null>(null);
-  const [activePractice, setActivePractice] = useState<PracticeQuestion | null>(null);
+  // MCQ state
+  const [activeMCQ, setActiveMCQ] = useState<MCQuestion | null>(null);
+  const [mcqIndex, setMcqIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [showExplanation, setShowExplanation] = useState(false);
+  const [showMCQExplanation, setShowMCQExplanation] = useState(false);
+  // FRQ state
+  const [activeFRQ, setActiveFRQ] = useState<FRQuestion | null>(null);
+  const [frqIndex, setFrqIndex] = useState(0);
+  const [frqAnswer, setFrqAnswer] = useState("");
+  const [showFRQSolution, setShowFRQSolution] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -170,47 +174,130 @@ export default function StudyPage({
   }, [courseId, topicId]);
 
   // Handle suggestion button click — use preloaded content if available
-  function handleSuggestion(label: string, key: keyof PreloadedContent) {
-    if (preloadedContent && preloadedContent[key]) {
-      if (key === "practice") {
-        // Try to parse as interactive question
-        const pq = parsePracticeQuestion(preloadedContent[key]!);
-        if (pq) {
-          setMessages((prev) => [...prev, { role: "user", content: label }]);
-          setActivePractice(pq);
-          setSelectedAnswer(null);
-          setShowExplanation(false);
-          return;
-        }
+  function handleSuggestion(label: string, key: SuggestionKey) {
+    if (!preloadedContent) {
+      sendMessage(label);
+      return;
+    }
+
+    if (key === "practice_mcq") {
+      const mcqs = preloadedContent.practice_mcq;
+      if (mcqs && mcqs.length > 0 && !mcqs[0].raw_text) {
+        setMessages((prev) => [...prev, { role: "user", content: label }]);
+        setMcqIndex(0);
+        setActiveMCQ(mcqs[0]);
+        setSelectedAnswer(null);
+        setShowMCQExplanation(false);
+        return;
       }
-      // Show instantly from preloaded cache
+      // legacy fallback
+      if (preloadedContent.practice) {
+        const legacyContent = preloadedContent.practice;
+        setMessages((prev) => [
+          ...prev,
+          { role: "user", content: label },
+          { role: "assistant", content: legacyContent },
+        ]);
+        return;
+      }
+      sendMessage(label);
+      return;
+    }
+
+    if (key === "practice_frq") {
+      const frqs = preloadedContent.practice_frq;
+      if (frqs && frqs.length > 0 && !frqs[0].raw_text) {
+        setMessages((prev) => [...prev, { role: "user", content: label }]);
+        setFrqIndex(0);
+        setActiveFRQ(frqs[0]);
+        setFrqAnswer("");
+        setShowFRQSolution(false);
+        return;
+      }
+      sendMessage(label);
+      return;
+    }
+
+    // intro, exam, mistakes — simple text content
+    const textKeys: Record<string, string | undefined> = {
+      intro: preloadedContent.intro,
+      exam: preloadedContent.exam,
+      mistakes: preloadedContent.mistakes,
+    };
+    if (textKeys[key]) {
       setMessages((prev) => [
         ...prev,
         { role: "user", content: label },
-        { role: "assistant", content: preloadedContent[key]! },
+        { role: "assistant", content: textKeys[key]! },
       ]);
     } else {
-      // Fall back to live AI generation
       sendMessage(label);
     }
   }
 
+  // ── MCQ handlers ──
   function handleAnswerSelect(letter: string) {
-    if (!activePractice || showExplanation) return;
+    if (!activeMCQ || showMCQExplanation) return;
     setSelectedAnswer(letter);
   }
 
-  function handleSubmitAnswer() {
-    if (!activePractice || !selectedAnswer) return;
-    setShowExplanation(true);
-    // Add the full Q&A as messages so it's part of the chat history
-    const isCorrect = selectedAnswer === activePractice.correct;
+  function handleSubmitMCQ() {
+    if (!activeMCQ || !selectedAnswer) return;
+    setShowMCQExplanation(true);
+    const isCorrect = selectedAnswer === activeMCQ.correct;
     const resultMsg = isCorrect
-      ? `**Correct!** You selected **(${selectedAnswer})** ` + activePractice.options[selectedAnswer]
-      : `**Incorrect.** You selected **(${selectedAnswer})** ${activePractice.options[selectedAnswer]}.\nThe correct answer is **(${activePractice.correct})** ${activePractice.options[activePractice.correct]}`;
-    const fullExplanation = `${resultMsg}\n\n---\n\n${activePractice.explanation}`;
+      ? `✅ **Correct!** You selected **(${selectedAnswer})** ${activeMCQ.options[selectedAnswer]}`
+      : `❌ **Incorrect.** You selected **(${selectedAnswer})** ${activeMCQ.options[selectedAnswer]}.\nThe correct answer is **(${activeMCQ.correct})** ${activeMCQ.options[activeMCQ.correct]}`;
+    const fullExplanation = `${resultMsg}\n\n---\n\n${activeMCQ.explanation}`;
     setMessages((prev) => [...prev, { role: "assistant", content: fullExplanation }]);
-    setActivePractice(null);
+    setActiveMCQ(null);
+  }
+
+  function handleNextMCQ() {
+    const mcqs = preloadedContent?.practice_mcq;
+    if (!mcqs) return;
+    const nextIdx = mcqIndex + 1;
+    if (nextIdx < mcqs.length && !mcqs[nextIdx].raw_text) {
+      setMcqIndex(nextIdx);
+      setActiveMCQ(mcqs[nextIdx]);
+      setSelectedAnswer(null);
+      setShowMCQExplanation(false);
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${mcqs.length}` },
+      ]);
+    }
+  }
+
+  // ── FRQ handlers ──
+  function handleSubmitFRQ() {
+    if (!activeFRQ) return;
+    setShowFRQSolution(true);
+    const header = `**Your Answer:**\n\`\`\`java\n${frqAnswer || "(no answer submitted)"}\n\`\`\`\n\n---\n\n`;
+    const solution = `**Sample Solution:**\n\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n`;
+    const rubric = activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : "";
+    const explanation = `**Explanation:**\n${activeFRQ.explanation}`;
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: header + solution + rubric + explanation },
+    ]);
+    setActiveFRQ(null);
+  }
+
+  function handleNextFRQ() {
+    const frqs = preloadedContent?.practice_frq;
+    if (!frqs) return;
+    const nextIdx = frqIndex + 1;
+    if (nextIdx < frqs.length && !frqs[nextIdx].raw_text) {
+      setFrqIndex(nextIdx);
+      setActiveFRQ(frqs[nextIdx]);
+      setFrqAnswer("");
+      setShowFRQSolution(false);
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: `Practice FRQ ${nextIdx + 1} of ${frqs.length}` },
+      ]);
+    }
   }
 
   const sendMessage = useCallback(
@@ -380,7 +467,21 @@ export default function StudyPage({
             <div className="flex flex-wrap gap-2 justify-center">
               {SUGGESTION_KEYS.map(({ label, key }) => {
                 const text = label(topic?.title || "this topic");
-                const hasPreloaded = preloadedContent && preloadedContent[key];
+                let hasPreloaded = false;
+                let count = 0;
+                if (preloadedContent) {
+                  if (key === "practice_mcq") {
+                    const mcqs = preloadedContent.practice_mcq;
+                    hasPreloaded = !!(mcqs && mcqs.length > 0);
+                    count = mcqs?.length || 0;
+                  } else if (key === "practice_frq") {
+                    const frqs = preloadedContent.practice_frq;
+                    hasPreloaded = !!(frqs && frqs.length > 0);
+                    count = frqs?.length || 0;
+                  } else {
+                    hasPreloaded = !!(preloadedContent as Record<string, unknown>)[key];
+                  }
+                }
                 return (
                   <button
                     key={key}
@@ -393,6 +494,11 @@ export default function StudyPage({
                   >
                     {hasPreloaded && <Sparkles className="w-3 h-3" />}
                     {text}
+                    {count > 0 && (
+                      <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+                        {count}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -447,20 +553,25 @@ export default function StudyPage({
           </div>
         ))}
 
-        {/* Interactive Practice Question */}
-        {activePractice && !showExplanation && (
+        {/* Interactive MCQ */}
+        {activeMCQ && !showMCQExplanation && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot className="w-4 h-4 text-blue-500" />
             </div>
             <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-blue-500 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
+                  MCQ {mcqIndex + 1} of {preloadedContent?.practice_mcq?.length || 1}
+                </span>
+              </div>
               <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {processLatexContent(activePractice.question)}
+                  {processLatexContent(activeMCQ.question)}
                 </ReactMarkdown>
               </div>
               <div className="space-y-2 mb-4">
-                {Object.entries(activePractice.options).map(([letter, text]) => (
+                {Object.entries(activeMCQ.options).map(([letter, text]) => (
                   <button
                     key={letter}
                     onClick={() => handleAnswerSelect(letter)}
@@ -481,14 +592,85 @@ export default function StudyPage({
                   </button>
                 ))}
               </div>
-              <button
-                onClick={handleSubmitAnswer}
-                disabled={!selectedAnswer}
-                className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {t("Submit Answer")}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSubmitMCQ}
+                  disabled={!selectedAnswer}
+                  className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t("Submit Answer")}
+                </button>
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* "Next MCQ" button after explanation */}
+        {showMCQExplanation && preloadedContent?.practice_mcq && mcqIndex < (preloadedContent.practice_mcq.length - 1) && (
+          <div className="flex justify-center">
+            <button
+              onClick={handleNextMCQ}
+              className="text-xs px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+            >
+              Next MCQ →
+            </button>
+          </div>
+        )}
+
+        {/* Interactive FRQ */}
+        {activeFRQ && !showFRQSolution && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
+                  FRQ {frqIndex + 1} of {preloadedContent?.practice_frq?.length || 1}
+                  {activeFRQ.frq_type && ` • ${activeFRQ.frq_type}`}
+                </span>
+              </div>
+              <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  {processLatexContent(activeFRQ.question)}
+                </ReactMarkdown>
+              </div>
+              <div className="mb-3">
+                <label className="text-xs text-slate-500 mb-1 block">Write your Java code:</label>
+                <textarea
+                  value={frqAnswer}
+                  onChange={(e) => setFrqAnswer(e.target.value)}
+                  placeholder="// Write your solution here..."
+                  className="w-full h-40 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-mono text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSubmitFRQ}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  {t("Submit & View Solution")}
+                </button>
+                <button
+                  onClick={() => { setShowFRQSolution(true); handleSubmitFRQ(); }}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {t("Skip — Show Solution")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* "Next FRQ" button after solution */}
+        {showFRQSolution && preloadedContent?.practice_frq && frqIndex < (preloadedContent.practice_frq.length - 1) && (
+          <div className="flex justify-center">
+            <button
+              onClick={handleNextFRQ}
+              className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
+            >
+              Next FRQ →
+            </button>
           </div>
         )}
 

@@ -229,51 +229,77 @@ async def get_topic_content(course_id: str, topic_id: str):
         db.close()
 
 
+# ──────────────────────────────────────────────────────
 # Prompts for each content type
-_CONTENT_PROMPTS = {
-    "intro": (
-        "Provide a comprehensive introduction to the topic '{topic_title}' "
-        "(Topic {topic_number}) from Unit {unit_number}: {unit_title} "
-        "in {course_name}. Cover the key concepts, why they matter for the AP exam, "
-        "and give a clear explanation suitable for a student seeing this for the first time. "
-        "Use markdown formatting with headers, bullet points, and examples where appropriate."
-    ),
-    "practice": (
-        "Create a challenging but fair AP-style multiple choice practice question about "
-        "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
-        "in {course_name}.\n\n"
-        "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
-        '{{\n'
-        '  "question": "The question text here (use \\n for newlines, include any code blocks as ```lang\\ncode\\n```)",\n'
-        '  "options": {{\n'
-        '    "A": "First option",\n'
-        '    "B": "Second option",\n'
-        '    "C": "Third option",\n'
-        '    "D": "Fourth option",\n'
-        '    "E": "Fifth option (optional, omit if not needed)"\n'
-        '  }},\n'
-        '  "correct": "B",\n'
-        '  "explanation": "Detailed step-by-step explanation in markdown format"\n'
-        '}}\n\n'
-        "Make it representative of what students would see on the AP exam. "
-        "The explanation should cover why the correct answer is right AND why each "
-        "incorrect answer is wrong."
-    ),
-    "exam": (
-        "Explain how the topic '{topic_title}' (Topic {topic_number}) from "
-        "Unit {unit_number}: {unit_title} in {course_name} appears on the AP exam. "
-        "Cover: what types of questions test this topic (MCQ vs FRQ), how frequently "
-        "it appears, what specific skills are tested, and any connections to other topics. "
-        "Give concrete examples of how exam questions are framed around this topic."
-    ),
-    "mistakes": (
-        "What are the most common mistakes and misconceptions students have about "
-        "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
-        "in {course_name}? For each mistake, explain: what students get wrong, why they "
-        "get confused, and how to avoid the error. Include specific examples that "
-        "illustrate the correct vs incorrect approach."
-    ),
-}
+# ──────────────────────────────────────────────────────
+
+_PROMPT_INTRO = (
+    "Provide a comprehensive introduction to the topic '{topic_title}' "
+    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}. Cover the key concepts, why they matter for the AP exam, "
+    "and give a clear explanation suitable for a student seeing this for the first time. "
+    "Use markdown formatting with headers, bullet points, and examples where appropriate."
+)
+
+_PROMPT_MCQ = (
+    "Create a challenging but fair AP-style multiple choice practice question about "
+    "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}.\n\n"
+    "IMPORTANT: The AP CSA exam uses 4 answer choices (A-D), NOT 5.\n\n"
+    "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+    '{{\n'
+    '  "question": "The question text here (use \\n for newlines, include any code blocks as ```lang\\ncode\\n```)",\n'
+    '  "options": {{\n'
+    '    "A": "First option",\n'
+    '    "B": "Second option",\n'
+    '    "C": "Third option",\n'
+    '    "D": "Fourth option"\n'
+    '  }},\n'
+    '  "correct": "B",\n'
+    '  "explanation": "Detailed step-by-step explanation in markdown format"\n'
+    '}}\n\n'
+    "Make it representative of what students would see on the AP exam. "
+    "The explanation should cover why the correct answer is right AND why each "
+    "incorrect answer is wrong.{variation_hint}"
+)
+
+_PROMPT_FRQ = (
+    "Create an AP-style free response question about '{topic_title}' "
+    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} in {course_name}.\n\n"
+    "The AP CSA exam has 4 FRQ types: (1) Methods and Control Structures, "
+    "(2) Class Design, (3) Data Analysis with ArrayList, (4) 2D Array.\n"
+    "Choose the FRQ type most relevant to this topic.\n\n"
+    "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+    '{{\n'
+    '  "question": "Full problem statement in markdown (include any class/method signatures, requirements, examples)",\n'
+    '  "frq_type": "Methods and Control Structures",\n'
+    '  "sample_solution": "Complete Java code solution",\n'
+    '  "rubric": "Point-by-point scoring rubric in markdown (e.g., +1 for loop, +1 for correct return)",\n'
+    '  "explanation": "Step-by-step explanation of the solution approach in markdown"\n'
+    '}}\n\n'
+    "Make it realistic and representative of actual AP CSA FRQs. "
+    "The question should require writing Java code (a method or class).{variation_hint}"
+)
+
+_PROMPT_EXAM = (
+    "Explain how the topic '{topic_title}' (Topic {topic_number}) from "
+    "Unit {unit_number}: {unit_title} in {course_name} appears on the AP exam. "
+    "Cover: what types of questions test this topic (MCQ vs FRQ), how frequently "
+    "it appears, what specific skills are tested, and any connections to other topics. "
+    "Give concrete examples of how exam questions are framed around this topic."
+)
+
+_PROMPT_MISTAKES = (
+    "What are the most common mistakes and misconceptions students have about "
+    "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}? For each mistake, explain: what students get wrong, why they "
+    "get confused, and how to avoid the error. Include specific examples that "
+    "illustrate the correct vs incorrect approach."
+)
+
+# How many practice questions of each type to generate per topic
+_MCQ_COUNT = 3
+_FRQ_COUNT = 2
 
 
 @router.post("/{course_id}/topics/{topic_id}/preload")
@@ -338,12 +364,7 @@ async def preload_topic_content(
             "course_name": course.name,
         }
 
-        # Generate all 4 content types sequentially
-        content_dict = {}
-        for key, prompt_template in _CONTENT_PROMPTS.items():
-            prompt = prompt_template.format(**fmt)
-            logger.info(f"Generating '{key}' for topic {topic.topic_number} {topic.title}...")
-
+        async def _generate(prompt: str) -> str:
             result = await agent.process(
                 message=prompt,
                 history=[],
@@ -352,26 +373,71 @@ async def preload_topic_content(
                 unit_number=unit.unit_number,
                 stream=False,
             )
-            response_text = result.get("response", "")
+            return result.get("response", "")
 
-            # For practice questions, try to parse as structured JSON
-            if key == "practice" and response_text:
-                try:
-                    # Strip markdown code fences if present
-                    cleaned = response_text.strip()
-                    if cleaned.startswith("```"):
-                        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-                        cleaned = cleaned.rsplit("```", 1)[0]
-                    parsed = json.loads(cleaned)
-                    # Validate required fields
-                    if all(k in parsed for k in ("question", "options", "correct", "explanation")):
-                        response_text = json.dumps(parsed)  # re-serialize clean
-                except (json.JSONDecodeError, KeyError):
-                    logger.warning(f"Practice question for {topic.title} not valid JSON, storing as-is")
+        def _parse_json_response(raw: str) -> dict | None:
+            """Try to parse a JSON response, stripping markdown fences."""
+            try:
+                cleaned = raw.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+                    cleaned = cleaned.rsplit("```", 1)[0]
+                return json.loads(cleaned)
+            except (json.JSONDecodeError, KeyError):
+                return None
 
-            content_dict[key] = response_text
+        content_dict: dict = {}
 
-        if not any(content_dict.values()):
+        # 1. Generate intro
+        logger.info(f"Generating 'intro' for {topic.topic_number} {topic.title}...")
+        content_dict["intro"] = await _generate(_PROMPT_INTRO.format(**fmt))
+
+        # 2. Generate multiple MCQs
+        mcq_list = []
+        variation_hints = [
+            "",
+            "\n\nMake this question focus on a DIFFERENT concept or aspect than a typical question about this topic.",
+            "\n\nMake this a TRICKY question that tests edge cases or subtle details that students often miss.",
+        ]
+        for i in range(_MCQ_COUNT):
+            hint = variation_hints[i] if i < len(variation_hints) else variation_hints[-1]
+            logger.info(f"Generating MCQ {i+1}/{_MCQ_COUNT} for {topic.topic_number}...")
+            raw = await _generate(_PROMPT_MCQ.format(**fmt, variation_hint=hint))
+            parsed = _parse_json_response(raw)
+            if parsed and all(k in parsed for k in ("question", "options", "correct", "explanation")):
+                mcq_list.append(parsed)
+            else:
+                logger.warning(f"MCQ {i+1} for {topic.title} not valid JSON, storing as text")
+                mcq_list.append({"raw_text": raw})
+        content_dict["practice_mcq"] = mcq_list
+
+        # 3. Generate multiple FRQs
+        frq_list = []
+        frq_hints = [
+            "",
+            "\n\nMake this a DIFFERENT style of FRQ focusing on a different aspect of the topic.",
+        ]
+        for i in range(_FRQ_COUNT):
+            hint = frq_hints[i] if i < len(frq_hints) else frq_hints[-1]
+            logger.info(f"Generating FRQ {i+1}/{_FRQ_COUNT} for {topic.topic_number}...")
+            raw = await _generate(_PROMPT_FRQ.format(**fmt, variation_hint=hint))
+            parsed = _parse_json_response(raw)
+            if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
+                frq_list.append(parsed)
+            else:
+                logger.warning(f"FRQ {i+1} for {topic.title} not valid JSON, storing as text")
+                frq_list.append({"raw_text": raw})
+        content_dict["practice_frq"] = frq_list
+
+        # 4. Generate exam info
+        logger.info(f"Generating 'exam' for {topic.topic_number}...")
+        content_dict["exam"] = await _generate(_PROMPT_EXAM.format(**fmt))
+
+        # 5. Generate common mistakes
+        logger.info(f"Generating 'mistakes' for {topic.topic_number}...")
+        content_dict["mistakes"] = await _generate(_PROMPT_MISTAKES.format(**fmt))
+
+        if not content_dict.get("intro"):
             raise HTTPException(status_code=500, detail="Failed to generate content")
 
         # Save to DB as JSON

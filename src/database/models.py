@@ -93,17 +93,20 @@ class TopicContent(Base):
     """Pre-generated topic content, shared across all users.
 
     The `content` column stores a JSON object with keys:
-      - intro: "Explain <topic> step by step"
-      - practice: "Give me a practice question"
-      - exam: "How does this appear on the AP exam?"
-      - mistakes: "What are common mistakes students make?"
+      - intro: str — "Explain <topic> step by step"
+      - practice_mcq: list[dict] — Multiple choice questions, each:
+            {question, options: {A,B,C,D}, correct, explanation}
+      - practice_frq: list[dict] — Free response questions, each:
+            {question, sample_solution, rubric, explanation}
+      - exam: str — "How does this appear on the AP exam?"
+      - mistakes: str — "What are common mistakes students make?"
     """
 
     __tablename__ = "topic_content"
 
     id = Column(String, primary_key=True, default=generate_uuid)
     topic_id = Column(String, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False, unique=True)
-    content = Column(Text, nullable=False)  # JSON: {intro, practice, exam, mistakes}
+    content = Column(Text, nullable=False)  # JSON: {intro, practice_mcq, practice_frq, exam, mistakes}
     generated_by = Column(String(100))  # Username who triggered generation
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
