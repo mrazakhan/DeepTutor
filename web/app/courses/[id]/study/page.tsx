@@ -26,6 +26,7 @@ import { apiUrl, wsUrl } from "@/lib/api";
 import { processLatexContent } from "@/lib/latex";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
+import { useGlobal } from "@/context/GlobalContext";
 
 interface UserFile {
   name: string;
@@ -191,6 +192,24 @@ export default function StudyPage({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const pendingInlineEditorRef = useRef(false);
+
+  // Auto-collapse sidebar on study page for more room
+  const { sidebarCollapsed, setSidebarCollapsed } = useGlobal();
+  const prevCollapsedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    // Save the current state and collapse
+    if (!sidebarCollapsed) {
+      prevCollapsedRef.current = false;
+      setSidebarCollapsed(true);
+    }
+    return () => {
+      // Restore sidebar state when leaving study page
+      if (prevCollapsedRef.current === false) {
+        setSidebarCollapsed(false);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -730,7 +749,7 @@ export default function StudyPage({
       {/* Main content: messages + optional right-side editor */}
       <div className="flex flex-1 overflow-hidden">
       {/* Messages column */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className={`flex flex-col min-w-0 ${showEditorPanel ? "w-1/2" : "flex-1"}`}>
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
@@ -995,7 +1014,7 @@ export default function StudyPage({
 
       {/* Right-side Code Editor Panel */}
       {showEditorPanel && (
-        <div className="w-[480px] flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900">
+        <div className="w-1/2 flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900">
           {/* Editor header */}
           <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
             <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
