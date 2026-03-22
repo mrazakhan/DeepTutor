@@ -135,6 +135,7 @@ COPY --from=frontend-builder /app/web/node_modules ./web/node_modules
 COPY src/ ./src/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
+COPY tests/ ./tests/
 COPY pyproject.toml ./
 COPY requirements.txt ./
 
