@@ -3,11 +3,14 @@
 import { useState, useEffect, useRef, useCallback, use } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+
+const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false });
 import {
   ArrowLeft,
   Bot,
@@ -16,10 +19,18 @@ import {
   User,
   BookOpen,
   Sparkles,
+  Upload,
+  Paperclip,
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import { processLatexContent } from "@/lib/latex";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "@/lib/auth";
+
+interface UserFile {
+  name: string;
+  size: number;
+}
 
 interface Message {
   role: "user" | "assistant";
@@ -81,6 +92,59 @@ const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: SuggestionK
   { label: () => "What are common mistakes students make?", key: "mistakes" },
 ];
 
+/** Try to recover a structured MCQ from raw_text (when JSON parsing failed on backend). */
+function tryRecoverMCQ(mcq: MCQuestion): MCQuestion {
+  if (!mcq.raw_text) return mcq;
+  try {
+    let raw = mcq.raw_text.trim();
+    // Strip markdown code fences
+    if (raw.startsWith("```")) {
+      raw = raw.split("\n").slice(1).join("\n");
+      raw = raw.replace(/```\s*$/, "").trim();
+    }
+    // Find JSON object boundaries
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first !== -1 && last > first) {
+      let candidate = raw.slice(first, last + 1);
+      // Fix trailing commas
+      candidate = candidate.replace(/,\s*([}\]])/g, "$1");
+      const parsed = JSON.parse(candidate);
+      if (parsed.question && parsed.options && parsed.correct && parsed.explanation) {
+        return parsed as MCQuestion;
+      }
+    }
+  } catch {
+    // recovery failed
+  }
+  return mcq;
+}
+
+/** Try to recover a structured FRQ from raw_text. */
+function tryRecoverFRQ(frq: FRQuestion): FRQuestion {
+  if (!frq.raw_text) return frq;
+  try {
+    let raw = frq.raw_text.trim();
+    if (raw.startsWith("```")) {
+      raw = raw.split("\n").slice(1).join("\n");
+      raw = raw.replace(/```\s*$/, "").trim();
+    }
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first !== -1 && last > first) {
+      let candidate = raw.slice(first, last + 1);
+      candidate = candidate.replace(/,\s*([}\]])/g, "$1");
+      const parsed = JSON.parse(candidate);
+      if (parsed.question && parsed.sample_solution && parsed.explanation) {
+        return parsed as FRQuestion;
+      }
+    }
+  } catch {
+    // recovery failed
+  }
+  return frq;
+}
+
 export default function StudyPage({
   params,
 }: {
@@ -112,6 +176,12 @@ export default function StudyPage({
   const [frqIndex, setFrqIndex] = useState(0);
   const [frqAnswer, setFrqAnswer] = useState("");
   const [showFRQSolution, setShowFRQSolution] = useState(false);
+  // Upload state
+  const { user } = useAuth();
+  const [userFiles, setUserFiles] = useState<UserFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -173,6 +243,74 @@ export default function StudyPage({
     loadPreloaded();
   }, [courseId, topicId]);
 
+  // Load user-uploaded files for this course
+  useEffect(() => {
+    if (!user) return;
+    async function loadUserFiles() {
+      try {
+        const token = localStorage.getItem("deeptutor_token");
+        const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/user-uploads`), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUserFiles(data.files || []);
+        }
+      } catch (err) {
+        console.error("Failed to load user files:", err);
+      }
+    }
+    loadUserFiles();
+  }, [courseId, user]);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const token = localStorage.getItem("deeptutor_token");
+      const formData = new FormData();
+      for (const f of Array.from(files)) {
+        formData.append("files", f);
+      }
+      const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/user-upload`), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (res.ok) {
+        // Refresh file list
+        const listRes = await fetch(apiUrl(`/api/v1/courses/${courseId}/user-uploads`), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (listRes.ok) {
+          const data = await listRes.json();
+          setUserFiles(data.files || []);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to upload file:", err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleDeleteFile(filename: string) {
+    try {
+      const token = localStorage.getItem("deeptutor_token");
+      const res = await fetch(
+        apiUrl(`/api/v1/courses/${courseId}/user-uploads/${encodeURIComponent(filename)}`),
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) {
+        setUserFiles((prev) => prev.filter((f) => f.name !== filename));
+      }
+    } catch (err) {
+      console.error("Failed to delete file:", err);
+    }
+  }
+
   // Handle suggestion button click — use preloaded content if available
   function handleSuggestion(label: string, key: SuggestionKey) {
     if (!preloadedContent) {
@@ -181,13 +319,21 @@ export default function StudyPage({
     }
 
     if (key === "practice_mcq") {
-      const mcqs = preloadedContent.practice_mcq;
+      let mcqs = preloadedContent.practice_mcq;
+      // Try to recover any raw_text items
+      if (mcqs && mcqs.length > 0) {
+        mcqs = mcqs.map(tryRecoverMCQ);
+      }
       if (mcqs && mcqs.length > 0 && !mcqs[0].raw_text) {
         setMessages((prev) => [...prev, { role: "user", content: label }]);
         setMcqIndex(0);
         setActiveMCQ(mcqs[0]);
         setSelectedAnswer(null);
         setShowMCQExplanation(false);
+        // Update preloadedContent with recovered MCQs for next navigation
+        if (preloadedContent) {
+          preloadedContent.practice_mcq = mcqs;
+        }
         return;
       }
       // legacy fallback
@@ -205,7 +351,11 @@ export default function StudyPage({
     }
 
     if (key === "practice_frq") {
-      const frqs = preloadedContent.practice_frq;
+      let frqs = preloadedContent.practice_frq;
+      if (frqs && frqs.length > 0) {
+        frqs = frqs.map(tryRecoverFRQ);
+        preloadedContent.practice_frq = frqs;
+      }
       if (frqs && frqs.length > 0 && !frqs[0].raw_text) {
         setMessages((prev) => [...prev, { role: "user", content: label }]);
         setFrqIndex(0);
@@ -284,6 +434,24 @@ export default function StudyPage({
     setActiveFRQ(null);
   }
 
+  function handleEvaluateFRQ() {
+    if (!activeFRQ || !frqAnswer.trim()) return;
+    // Build evaluation prompt and send to TutorAgent via WebSocket
+    const evalPrompt = [
+      "**Evaluate my Java code for this FRQ.**\n",
+      `**Question:** ${activeFRQ.question}\n`,
+      `**My Code:**\n\`\`\`java\n${frqAnswer}\n\`\`\`\n`,
+      "**Instructions for evaluation:**",
+      "1. Review my code **line by line**. For each line that has an issue, quote the line, explain what's wrong, and suggest the fix.",
+      "2. Check for: correctness, edge cases, style, and common AP CSA mistakes.",
+      `3. Score my solution against this rubric:\n${activeFRQ.rubric || "Standard AP FRQ rubric"}`,
+      "4. End with an overall score (e.g., 5/9 points) and key areas to improve.",
+    ].join("\n");
+    setShowFRQSolution(true);
+    setActiveFRQ(null);
+    sendMessage(evalPrompt);
+  }
+
   function handleNextFRQ() {
     const frqs = preloadedContent?.practice_frq;
     if (!frqs) return;
@@ -332,6 +500,7 @@ export default function StudyPage({
             history,
             course_id: courseId,
             topic_id: topicId || null,
+            user_id: user?.id || null,
           })
         );
       };
@@ -395,7 +564,7 @@ export default function StudyPage({
         setCurrentStage(null);
       };
     },
-    [isLoading, messages, courseId, topicId, course]
+    [isLoading, messages, courseId, topicId, course, user]
   );
 
   function handleSubmit(e: React.FormEvent) {
@@ -448,7 +617,72 @@ export default function StudyPage({
               {topicLabel}
             </div>
           </div>
+          {/* Upload button */}
+          <button
+            onClick={() => setShowUploadPanel(!showUploadPanel)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex-shrink-0
+              border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            <Paperclip className="w-3.5 h-3.5" />
+            {t("My Files")}
+            {userFiles.length > 0 && (
+              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+                {userFiles.length}
+              </span>
+            )}
+          </button>
         </div>
+        {/* Upload Panel (collapsible) */}
+        {showUploadPanel && (
+          <div className="mt-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                {t("Personal Study Materials")}
+              </span>
+              <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 cursor-pointer transition-colors">
+                <Upload className="w-3 h-3" />
+                {uploading ? t("Uploading...") : t("Upload")}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.txt,.md,.docx,.doc"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  disabled={uploading}
+                />
+              </label>
+            </div>
+            {userFiles.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                {t("No files uploaded yet. Upload PDFs, notes, or documents to enhance your AI tutoring.")}
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {userFiles.map((f) => (
+                  <div
+                    key={f.name}
+                    className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Paperclip className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      <span className="truncate text-slate-700 dark:text-slate-300">{f.name}</span>
+                      <span className="text-slate-400 flex-shrink-0">
+                        ({(f.size / 1024).toFixed(0)}KB)
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteFile(f.name)}
+                      className="text-red-400 hover:text-red-600 text-[10px] font-medium ml-2 flex-shrink-0"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Messages Area */}
@@ -637,14 +871,21 @@ export default function StudyPage({
               </div>
               <div className="mb-3">
                 <label className="text-xs text-slate-500 mb-1 block">Write your Java code:</label>
-                <textarea
+                <CodeEditor
                   value={frqAnswer}
-                  onChange={(e) => setFrqAnswer(e.target.value)}
-                  placeholder="// Write your solution here..."
-                  className="w-full h-40 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-mono text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
+                  onChange={setFrqAnswer}
+                  language="java"
+                  height="240px"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleEvaluateFRQ}
+                  disabled={!frqAnswer.trim() || isLoading}
+                  className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t("Evaluate My Code")}
+                </button>
                 <button
                   onClick={handleSubmitFRQ}
                   className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"

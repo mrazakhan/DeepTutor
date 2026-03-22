@@ -117,6 +117,7 @@ async def websocket_tutor(websocket: WebSocket):
             explicit_history = data.get("history")
             course_id = data.get("course_id")
             topic_id = data.get("topic_id")
+            user_id = data.get("user_id")  # Optional: for user-specific KB
 
             if not course_id:
                 await websocket.send_json({"type": "error", "message": "course_id is required"})
@@ -204,6 +205,14 @@ async def websocket_tutor(websocket: WebSocket):
                     base_url = None
                     api_version = None
 
+                # Build user-specific KB name if user_id is provided
+                user_kb_name = None
+                if user_id:
+                    # Check if user has uploaded files for this course
+                    user_upload_dir = Path("data/user_uploads") / str(user_id) / course_code
+                    if user_upload_dir.exists() and any(user_upload_dir.iterdir()):
+                        user_kb_name = f"user-{user_id}-{course_code.lower().replace('_', '-')}"
+
                 agent = TutorAgent(
                     course_code=course_code,
                     course_name=course_name,
@@ -212,6 +221,7 @@ async def websocket_tutor(websocket: WebSocket):
                     api_key=api_key,
                     base_url=base_url,
                     api_version=api_version,
+                    user_kb_name=user_kb_name,
                 )
 
                 # Status updates

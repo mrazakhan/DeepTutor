@@ -311,7 +311,7 @@ export default function CourseDetailPage({
               ) : (
                 <Sparkles className="w-3 h-3" />
               )}
-              {preloadingAll ? t("Preloading...") : t("Preload all")}
+              {preloadingAll ? t("Loading...") : t("Load All")}
             </button>
             <span className="text-slate-300">|</span>
             <button
@@ -385,27 +385,27 @@ export default function CourseDetailPage({
                         <button
                           onClick={(e) => preloadTopic(topic.id, e)}
                           disabled={loadingTopics.has(topic.id) || contentStatus[topic.id]}
-                          className={`p-1 rounded transition-colors flex-shrink-0 ${
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex-shrink-0 inline-flex items-center gap-1 ${
                             contentStatus[topic.id]
-                              ? "text-emerald-500 cursor-default"
+                              ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 cursor-default"
                               : loadingTopics.has(topic.id)
-                              ? "text-purple-400"
-                              : "text-slate-300 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                              ? "text-purple-500 bg-purple-50 dark:bg-purple-900/20"
+                              : "text-purple-600 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30"
                           }`}
                           title={
                             contentStatus[topic.id]
-                              ? "Content preloaded"
+                              ? "Content loaded"
                               : loadingTopics.has(topic.id)
-                              ? "Generating..."
-                              : "Preload intro content"
+                              ? "Loading..."
+                              : "Load content for this topic"
                           }
                         >
                           {loadingTopics.has(topic.id) ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <><Loader2 className="w-3 h-3 animate-spin" /> Loading</>
                           ) : contentStatus[topic.id] ? (
-                            <Check className="w-3.5 h-3.5" />
+                            <><Check className="w-3 h-3" /> Loaded</>
                           ) : (
-                            <Sparkles className="w-3.5 h-3.5" />
+                            "Load"
                           )}
                         </button>
                         <Link

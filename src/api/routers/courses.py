@@ -1,9 +1,10 @@
 """AP Academy Course Catalog API router."""
 
 import json
+import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 
 from src.database.engine import get_db, init_db
@@ -376,15 +377,41 @@ async def preload_topic_content(
             return result.get("response", "")
 
         def _parse_json_response(raw: str) -> dict | None:
-            """Try to parse a JSON response, stripping markdown fences."""
-            try:
-                cleaned = raw.strip()
-                if cleaned.startswith("```"):
-                    cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-                    cleaned = cleaned.rsplit("```", 1)[0]
-                return json.loads(cleaned)
-            except (json.JSONDecodeError, KeyError):
-                return None
+            """Try to parse a JSON response, with aggressive cleanup."""
+            import re
+
+            def _try_parse(s: str) -> dict | None:
+                try:
+                    return json.loads(s)
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    return None
+
+            cleaned = raw.strip()
+
+            # Strip markdown code fences (```json ... ``` or ``` ... ```)
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+                cleaned = cleaned.rsplit("```", 1)[0].strip()
+
+            result = _try_parse(cleaned)
+            if result:
+                return result
+
+            # Fallback: extract first JSON object via brace matching
+            first_brace = cleaned.find("{")
+            last_brace = cleaned.rfind("}")
+            if first_brace != -1 and last_brace > first_brace:
+                candidate = cleaned[first_brace : last_brace + 1]
+                result = _try_parse(candidate)
+                if result:
+                    return result
+                # Try fixing trailing commas (common LLM error)
+                fixed = re.sub(r",\s*([}\]])", r"\1", candidate)
+                result = _try_parse(fixed)
+                if result:
+                    return result
+
+            return None
 
         content_dict: dict = {}
 
@@ -471,3 +498,115 @@ def _subject_label(area: str) -> str:
         "science": "Science",
     }
     return labels.get(area, area.replace("_", " ").title())
+
+
+# ──────────────────────────────────────────────────────
+# User Content Uploads (per-user, per-course KB)
+# ──────────────────────────────────────────────────────
+
+_USER_UPLOADS_DIR = Path("data/user_uploads")
+
+def _get_user_from_request(request: Request) -> dict:
+    """Extract authenticated user from request. Raises 401 if not authenticated."""
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+
+def _user_upload_dir(user_id: str, course_code: str) -> Path:
+    """Get the upload directory for a user's course-specific materials."""
+    return _USER_UPLOADS_DIR / f"{user_id}" / course_code
+
+
+@router.post("/{course_id}/user-upload")
+async def upload_user_content(
+    course_id: str,
+    request: Request,
+    files: list[UploadFile] = File(...),
+):
+    """Upload personal study materials for a course (per-user, not shared)."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        upload_dir = _user_upload_dir(user_id, course.code)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_files = []
+        for f in files:
+            # Sanitize filename
+            safe_name = f.filename.replace("/", "_").replace("\\", "_") if f.filename else "upload"
+            dest = upload_dir / safe_name
+            with open(dest, "wb") as out:
+                content = await f.read()
+                out.write(content)
+            saved_files.append(safe_name)
+            logger.info(f"User {user_id} uploaded '{safe_name}' for {course.code}")
+
+        return {
+            "message": f"Uploaded {len(saved_files)} file(s)",
+            "files": saved_files,
+            "course_code": course.code,
+        }
+    finally:
+        db.close()
+
+
+@router.get("/{course_id}/user-uploads")
+async def list_user_uploads(course_id: str, request: Request):
+    """List files the current user has uploaded for this course."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        upload_dir = _user_upload_dir(user_id, course.code)
+        if not upload_dir.exists():
+            return {"files": [], "course_code": course.code}
+
+        files = []
+        for f in sorted(upload_dir.iterdir()):
+            if f.is_file():
+                files.append({
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                })
+
+        return {"files": files, "course_code": course.code}
+    finally:
+        db.close()
+
+
+@router.delete("/{course_id}/user-uploads/{filename}")
+async def delete_user_upload(course_id: str, filename: str, request: Request):
+    """Delete a user-uploaded file."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        upload_dir = _user_upload_dir(user_id, course.code)
+        target = upload_dir / filename
+        if not target.exists() or not target.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        target.unlink()
+        logger.info(f"User {user_id} deleted '{filename}' from {course.code}")
+        return {"message": f"Deleted {filename}"}
+    finally:
+        db.close()

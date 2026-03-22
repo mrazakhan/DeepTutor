@@ -83,6 +83,7 @@ services:
       - ./data/user:/app/data/user
       - ./data/knowledge_bases:/app/data/knowledge_bases
       - ./data/course_content:/app/data/course_content
+      - ./data/user_uploads:/app/data/user_uploads
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8001}/"]
