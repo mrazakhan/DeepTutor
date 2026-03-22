@@ -176,6 +176,9 @@ export default function StudyPage({
   const [frqIndex, setFrqIndex] = useState(0);
   const [frqAnswer, setFrqAnswer] = useState("");
   const [showFRQSolution, setShowFRQSolution] = useState(false);
+  // Inline code editor for non-preloaded FRQ responses
+  const [showInlineEditor, setShowInlineEditor] = useState(false);
+  const [inlineEditorCode, setInlineEditorCode] = useState("");
   // Upload state
   const { user } = useAuth();
   const [userFiles, setUserFiles] = useState<UserFile[]>([]);
@@ -187,6 +190,7 @@ export default function StudyPage({
   const sessionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingInlineEditorRef = useRef(false);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -314,6 +318,11 @@ export default function StudyPage({
   // Handle suggestion button click — use preloaded content if available
   function handleSuggestion(label: string, key: SuggestionKey) {
     if (!preloadedContent) {
+      if (key === "practice_frq") {
+        setShowInlineEditor(false);
+        setInlineEditorCode("");
+        pendingInlineEditorRef.current = true;
+      }
       sendMessage(label);
       return;
     }
@@ -364,7 +373,12 @@ export default function StudyPage({
         setShowFRQSolution(false);
         return;
       }
+      // No preloaded FRQ — send to LLM but show code editor after response
+      setShowInlineEditor(false);
+      setInlineEditorCode("");
       sendMessage(label);
+      // Flag to show code editor once response arrives
+      pendingInlineEditorRef.current = true;
       return;
     }
 
@@ -468,6 +482,25 @@ export default function StudyPage({
     }
   }
 
+  function handleInlineEvaluate() {
+    if (!inlineEditorCode.trim()) return;
+    // Find the last assistant message to use as the question context
+    const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
+    const questionContext = lastAssistantMsg?.content || "the FRQ above";
+    const evalPrompt = [
+      "**Evaluate my Java code for this FRQ.**\n",
+      `**Question context (from previous message):** ${questionContext.slice(0, 1000)}\n`,
+      `**My Code:**\n\`\`\`java\n${inlineEditorCode}\n\`\`\`\n`,
+      "**Instructions for evaluation:**",
+      "1. Review my code **line by line**. For each line that has an issue, quote the line, explain what's wrong, and suggest the fix.",
+      "2. Check for: correctness, edge cases, style, and common AP CSA mistakes.",
+      "3. Score my solution against the standard AP FRQ rubric.",
+      "4. End with an overall score (e.g., 5/9 points) and key areas to improve.",
+    ].join("\n");
+    setShowInlineEditor(false);
+    sendMessage(evalPrompt);
+  }
+
   const sendMessage = useCallback(
     (message: string) => {
       if (!message.trim() || isLoading || !course) return;
@@ -537,6 +570,12 @@ export default function StudyPage({
           });
           setIsLoading(false);
           setCurrentStage(null);
+          // Show inline code editor if this was an FRQ response
+          if (pendingInlineEditorRef.current) {
+            pendingInlineEditorRef.current = false;
+            setShowInlineEditor(true);
+            setInlineEditorCode("");
+          }
           ws.close();
         } else if (data.type === "error") {
           setMessages((prev) => [
@@ -912,6 +951,46 @@ export default function StudyPage({
             >
               Next FRQ →
             </button>
+          </div>
+        )}
+
+        {/* Inline code editor for non-preloaded FRQ responses */}
+        {showInlineEditor && !isLoading && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot className="w-4 h-4 text-green-500" />
+            </div>
+            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-medium text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
+                  ✏️ {t("Write Your Solution")}
+                </span>
+              </div>
+              <div className="mb-3">
+                <label className="text-xs text-slate-500 mb-1 block">{t("Write your Java code:")}</label>
+                <CodeEditor
+                  value={inlineEditorCode}
+                  onChange={setInlineEditorCode}
+                  language="java"
+                  height="240px"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleInlineEvaluate}
+                  disabled={!inlineEditorCode.trim() || isLoading}
+                  className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t("Evaluate My Code")}
+                </button>
+                <button
+                  onClick={() => setShowInlineEditor(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {t("Dismiss")}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
