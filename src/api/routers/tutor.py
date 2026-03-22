@@ -38,7 +38,7 @@ session_manager = TutorSessionManager()
 
 
 @router.get("/sessions")
-async def list_tutor_sessions(course_id: int | None = None, limit: int = 20):
+async def list_tutor_sessions(course_id: str | None = None, limit: int = 20):
     """List recent tutor sessions, optionally filtered by course."""
     return session_manager.list_sessions(course_id=course_id, limit=limit)
 
@@ -60,9 +60,9 @@ async def delete_tutor_session(session_id: str):
     raise HTTPException(status_code=404, detail="Session not found")
 
 
-def _get_course_and_topic(course_id: int, topic_id: int | None = None):
+def _get_course_and_topic(course_id: str, topic_id: str | None = None):
     """Helper to load course and optional topic from DB."""
-    db = next(get_db())
+    db = get_db()
     try:
         course = db.query(Course).filter(Course.id == course_id).first()
         if not course:
