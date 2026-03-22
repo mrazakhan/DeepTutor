@@ -98,21 +98,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 p-4 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
-            Test Accounts
-          </p>
-          <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
-            <div className="flex justify-between">
-              <span className="font-mono">student1 / test1234</span>
-              <span className="text-slate-400">Student</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="font-mono">admin1 / admin1234</span>
-              <span className="text-slate-400">Admin</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

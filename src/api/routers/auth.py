@@ -1,7 +1,7 @@
 """Simple authentication router with JWT tokens.
 
 Test users (seeded via seed_courses.py):
-  - student1 / test1234 (role: student)
+  - student1 / student1234 (role: student)
   - admin1 / admin1234 (role: admin)
 """
 

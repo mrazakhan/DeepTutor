@@ -1159,7 +1159,7 @@ def _hash_password(password: str) -> str:
 
 
 TEST_USERS = [
-    {"username": "student1", "password": "test1234", "display_name": "Test Student", "role": "student"},
+    {"username": "student1", "password": "student1234", "display_name": "Test Student", "role": "student"},
     {"username": "admin1", "password": "admin1234", "display_name": "Test Admin", "role": "admin"},
 ]
 
@@ -1170,20 +1170,23 @@ def seed_test_users():
     db = get_db()
 
     try:
-        existing = db.query(User).count()
-        if existing > 0:
-            print(f"Database already has {existing} users. Skipping user seed.")
-            return
-
+        # Upsert: update existing users or create new ones
         for user_data in TEST_USERS:
-            user = User(
-                username=user_data["username"],
-                password_hash=_hash_password(user_data["password"]),
-                display_name=user_data["display_name"],
-                role=user_data["role"],
-            )
-            db.add(user)
-            print(f"  Seeded user: {user.username} ({user.role})")
+            existing = db.query(User).filter(User.username == user_data["username"]).first()
+            if existing:
+                existing.password_hash = _hash_password(user_data["password"])
+                existing.display_name = user_data["display_name"]
+                existing.role = user_data["role"]
+                print(f"  Updated user: {existing.username} ({existing.role})")
+            else:
+                user = User(
+                    username=user_data["username"],
+                    password_hash=_hash_password(user_data["password"]),
+                    display_name=user_data["display_name"],
+                    role=user_data["role"],
+                )
+                db.add(user)
+                print(f"  Seeded user: {user.username} ({user.role})")
 
         db.commit()
         print(f"Done! Seeded {len(TEST_USERS)} test users.")
