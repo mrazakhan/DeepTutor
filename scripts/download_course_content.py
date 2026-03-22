@@ -62,7 +62,7 @@ COURSE_CONTENT = {
         "sources": [
             {
                 "name": "Blown to Bits 2e (Digital Information Book)",
-                "url": "http://www.bitsbook.com/wp-content/uploads/2021/08/9780137441075-Blown-to-Bits-2e.pdf",
+                "url": "https://www.bitsbook.com/wp-content/uploads/2021/08/9780137441075-Blown-to-Bits-2e.pdf",
                 "filename": "blown_to_bits_2e.pdf",
                 "license": "CC BY-NC-SA 4.0",
             },
