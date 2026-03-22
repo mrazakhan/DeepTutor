@@ -239,11 +239,25 @@ _CONTENT_PROMPTS = {
         "Use markdown formatting with headers, bullet points, and examples where appropriate."
     ),
     "practice": (
-        "Create a challenging but fair practice question about '{topic_title}' "
-        "(Topic {topic_number}) from Unit {unit_number}: {unit_title} in {course_name}. "
-        "Include the question, answer choices (if multiple choice), the correct answer, "
-        "and a detailed step-by-step explanation of why each answer is correct or incorrect. "
-        "Make it representative of what students would see on the AP exam."
+        "Create a challenging but fair AP-style multiple choice practice question about "
+        "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+        "in {course_name}.\n\n"
+        "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+        '{{\n'
+        '  "question": "The question text here (use \\n for newlines, include any code blocks as ```lang\\ncode\\n```)",\n'
+        '  "options": {{\n'
+        '    "A": "First option",\n'
+        '    "B": "Second option",\n'
+        '    "C": "Third option",\n'
+        '    "D": "Fourth option",\n'
+        '    "E": "Fifth option (optional, omit if not needed)"\n'
+        '  }},\n'
+        '  "correct": "B",\n'
+        '  "explanation": "Detailed step-by-step explanation in markdown format"\n'
+        '}}\n\n'
+        "Make it representative of what students would see on the AP exam. "
+        "The explanation should cover why the correct answer is right AND why each "
+        "incorrect answer is wrong."
     ),
     "exam": (
         "Explain how the topic '{topic_title}' (Topic {topic_number}) from "
@@ -338,7 +352,24 @@ async def preload_topic_content(
                 unit_number=unit.unit_number,
                 stream=False,
             )
-            content_dict[key] = result.get("response", "")
+            response_text = result.get("response", "")
+
+            # For practice questions, try to parse as structured JSON
+            if key == "practice" and response_text:
+                try:
+                    # Strip markdown code fences if present
+                    cleaned = response_text.strip()
+                    if cleaned.startswith("```"):
+                        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+                        cleaned = cleaned.rsplit("```", 1)[0]
+                    parsed = json.loads(cleaned)
+                    # Validate required fields
+                    if all(k in parsed for k in ("question", "options", "correct", "explanation")):
+                        response_text = json.dumps(parsed)  # re-serialize clean
+                except (json.JSONDecodeError, KeyError):
+                    logger.warning(f"Practice question for {topic.title} not valid JSON, storing as-is")
+
+            content_dict[key] = response_text
 
         if not any(content_dict.values()):
             raise HTTPException(status_code=500, detail="Failed to generate content")
