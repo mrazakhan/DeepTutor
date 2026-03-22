@@ -27,19 +27,19 @@ interface Message {
 }
 
 interface TopicInfo {
-  id: number;
+  id: string;
   topic_number: string;
   title: string;
 }
 
 interface UnitInfo {
-  id: number;
+  id: string;
   unit_number: number;
   title: string;
 }
 
 interface CourseInfo {
-  id: number;
+  id: string;
   code: string;
   name: string;
 }
@@ -136,8 +136,8 @@ export default function StudyPage({
             message,
             session_id: sessionIdRef.current,
             history,
-            course_id: parseInt(courseId),
-            topic_id: topicId ? parseInt(topicId) : null,
+            course_id: courseId,
+            topic_id: topicId || null,
           })
         );
       };
