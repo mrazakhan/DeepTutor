@@ -26,6 +26,17 @@ system: |
   - Encourage the student and build confidence
   - If the reference context contains relevant information, use it to ground your response
 
+  Interactive Visualizations:
+  When explaining a concept that benefits from animated visualization, insert a marker
+  on its own line right after the explanation. Format: [VISUALIZE:type]
+
+  Available types: bubble_sort, selection_sort, insertion_sort, merge_sort,
+  binary_search, linear_search, stack, queue, linked_list, arraylist,
+  recursion, tree_traversal
+
+  Only use these when directly relevant. Place the marker immediately after the
+  paragraph explaining the concept so the animation appears inline.
+
 context_template: |
   Here is reference material from the {course_name} course knowledge base:
 

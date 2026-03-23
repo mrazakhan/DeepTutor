@@ -9,7 +9,7 @@ import rehypeKatex from "rehype-katex";
 import dynamic from "next/dynamic";
 import { processLatexContent } from "@/lib/latex";
 
-const AlgorithmVisualizer = dynamic(() => import("./AlgorithmVisualizer"), {
+const ConceptVisualizer = dynamic(() => import("./ConceptVisualizer"), {
   ssr: false,
 });
 
@@ -19,22 +19,54 @@ interface StepByStepViewerProps {
   topicTitle?: string;
 }
 
-type AlgoType = "bubble" | "selection" | "insertion";
+// ─── Marker parsing ─────────────────────────────────────────────────────────
+// The AI embeds [VISUALIZE:type] markers in its markdown response.
+// We parse these out and render ConceptVisualizer components inline.
 
-/** Detect ALL algorithm references in text for auto-visualization */
-function detectAlgorithms(text: string): AlgoType[] {
-  const lower = text.toLowerCase();
-  const found: AlgoType[] = [];
-  if (lower.includes("bubble sort")) found.push("bubble");
-  if (lower.includes("selection sort")) found.push("selection");
-  if (lower.includes("insertion sort")) found.push("insertion");
-  return found;
+const VISUALIZE_REGEX = /\[VISUALIZE:([a-z_]+)\]/gi;
+
+/** Strip [VISUALIZE:...] markers from text for display */
+function stripMarkers(text: string): string {
+  return text.replace(VISUALIZE_REGEX, "").trim();
 }
 
-/** Detect the first algorithm reference in text */
-function detectAlgorithm(text: string): AlgoType | null {
-  const algos = detectAlgorithms(text);
-  return algos.length > 0 ? algos[0] : null;
+/**
+ * Split a block of text around [VISUALIZE:type] markers.
+ * Returns an array of segments: { type: "text", content } or { type: "viz", vizType }.
+ */
+interface TextSegment {
+  type: "text";
+  content: string;
+}
+interface VizSegment {
+  type: "viz";
+  vizType: string;
+}
+type Segment = TextSegment | VizSegment;
+
+function parseSegments(text: string): Segment[] {
+  const segments: Segment[] = [];
+  let lastIndex = 0;
+  const regex = /\[VISUALIZE:([a-z_]+)\]/gi;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Text before the marker
+    const before = text.slice(lastIndex, match.index).trim();
+    if (before) {
+      segments.push({ type: "text", content: before });
+    }
+    segments.push({ type: "viz", vizType: match[1].toLowerCase() });
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining text after last marker
+  const after = text.slice(lastIndex).trim();
+  if (after) {
+    segments.push({ type: "text", content: after });
+  }
+
+  return segments;
 }
 
 /** Split markdown into sections by ## headings, with fallback to --- */
@@ -47,7 +79,7 @@ function splitIntoSteps(content: string): { title: string; body: string }[] {
       const firstLine = lines[0];
       if (firstLine.startsWith("## ")) {
         return {
-          title: firstLine.replace(/^## /, "").trim(),
+          title: stripMarkers(firstLine.replace(/^## /, "").trim()),
           body: lines.slice(1).join("\n").trim(),
         };
       }
@@ -65,7 +97,7 @@ function splitIntoSteps(content: string): { title: string; body: string }[] {
     }));
   }
 
-  // Single section — still show step-by-step with blocks
+  // Single section
   return [{ title: "Overview", body: content.trim() }];
 }
 
@@ -80,7 +112,6 @@ function splitIntoBlocks(body: string): string[] {
       inCodeFence = !inCodeFence;
       current += line + "\n";
       if (!inCodeFence) {
-        // End of code block — push as one block
         blocks.push(current.trim());
         current = "";
       }
@@ -103,31 +134,6 @@ function splitIntoBlocks(body: string): string[] {
   return blocks.filter(Boolean);
 }
 
-/**
- * Given blocks of text, find which algorithms are mentioned and where.
- * Returns an array of { blockIndex, algorithm } for placing visualizers.
- * Each algorithm only gets one visualizer (at the LAST block that mentions it).
- */
-function findAlgoInsertionPoints(
-  blocks: string[]
-): { afterBlockIndex: number; algorithm: AlgoType }[] {
-  const algoLastBlock = new Map<AlgoType, number>();
-
-  blocks.forEach((block, i) => {
-    const algos = detectAlgorithms(block);
-    for (const algo of algos) {
-      algoLastBlock.set(algo, i);
-    }
-  });
-
-  // Sort by block index so visualizers appear in document order
-  const points = Array.from(algoLastBlock.entries())
-    .map(([algorithm, afterBlockIndex]) => ({ afterBlockIndex, algorithm }))
-    .sort((a, b) => a.afterBlockIndex - b.afterBlockIndex);
-
-  return points;
-}
-
 /** Custom ReactMarkdown components with concept highlighting */
 const highlightComponents = {
   strong: ({ children, ...props }: React.ComponentProps<"strong">) => (
@@ -140,7 +146,6 @@ const highlightComponents = {
     className,
     ...props
   }: React.ComponentProps<"code"> & { className?: string }) => {
-    // Only highlight inline code (no language class = inline)
     if (!className) {
       return (
         <code className="code-highlight" {...props}>
@@ -190,6 +195,45 @@ const blockItemVariants = {
   },
 };
 
+/** Render a block that may contain [VISUALIZE:type] markers inline */
+function RenderBlock({ block, blockKey }: { block: string; blockKey: string }) {
+  const segments = parseSegments(block);
+
+  // No markers — render as plain markdown
+  if (segments.length === 1 && segments[0].type === "text") {
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={highlightComponents}
+      >
+        {processLatexContent(segments[0].content)}
+      </ReactMarkdown>
+    );
+  }
+
+  // Mixed content — render text and visualizers inline
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, i) => {
+        if (seg.type === "text") {
+          return (
+            <ReactMarkdown
+              key={`${blockKey}-text-${i}`}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={highlightComponents}
+            >
+              {processLatexContent(seg.content)}
+            </ReactMarkdown>
+          );
+        }
+        return <ConceptVisualizer key={`${blockKey}-viz-${i}`} type={seg.vizType} />;
+      })}
+    </div>
+  );
+}
+
 export default function StepByStepViewer({
   content,
   onDone,
@@ -221,9 +265,7 @@ export default function StepByStepViewer({
   }
 
   if (showAll) {
-    // In "show all" mode, render all blocks with inline visualizers
     const allBlocks = splitIntoBlocks(content);
-    const insertionPoints = findAlgoInsertionPoints(allBlocks);
 
     return (
       <div className="space-y-4">
@@ -239,25 +281,11 @@ export default function StepByStepViewer({
           </button>
         </div>
         <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-li:my-0.5 prose-pre:my-2 space-y-2">
-          {allBlocks.map((block, i) => {
-            const algoPoint = insertionPoints.find(
-              (p) => p.afterBlockIndex === i
-            );
-            return (
-              <div key={`all-${i}`}>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={highlightComponents}
-                >
-                  {processLatexContent(block)}
-                </ReactMarkdown>
-                {algoPoint && (
-                  <AlgorithmVisualizer algorithm={algoPoint.algorithm} />
-                )}
-              </div>
-            );
-          })}
+          {allBlocks.map((block, i) => (
+            <div key={`all-${i}`}>
+              <RenderBlock block={block} blockKey={`all-${i}`} />
+            </div>
+          ))}
         </div>
         <div className="flex justify-center">
           <button
@@ -274,14 +302,6 @@ export default function StepByStepViewer({
   const step = steps[currentStep];
   const blocks = splitIntoBlocks(step.body);
   const isLastStep = currentStep === totalSteps - 1;
-
-  // Find algorithm insertion points for THIS step's blocks
-  const stepInsertionPoints = findAlgoInsertionPoints(blocks);
-
-  // Also check if the step title mentions an algorithm not found in any block
-  const titleAlgo = detectAlgorithm(step.title);
-  const blockAlgos = new Set(stepInsertionPoints.map((p) => p.algorithm));
-  const showTitleAlgo = titleAlgo && !blockAlgos.has(titleAlgo);
 
   return (
     <div className="space-y-4">
@@ -335,43 +355,21 @@ export default function StepByStepViewer({
             {step.title}
           </h3>
 
-          {/* Staggered block reveal with inline algorithm visualizers */}
+          {/* Staggered block reveal with inline visualizers */}
           <motion.div
             className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-li:my-0.5 prose-pre:my-2 space-y-2"
             variants={blockContainerVariants}
             initial="hidden"
             animate="visible"
           >
-            {blocks.map((block, i) => {
-              const algoPoint = stepInsertionPoints.find(
-                (p) => p.afterBlockIndex === i
-              );
-              return (
-                <motion.div
-                  key={`${currentStep}-${i}`}
-                  variants={blockItemVariants}
-                >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={highlightComponents}
-                  >
-                    {processLatexContent(block)}
-                  </ReactMarkdown>
-                  {/* Inline visualizer — appears right after the block that explains this algorithm */}
-                  {algoPoint && (
-                    <AlgorithmVisualizer algorithm={algoPoint.algorithm} />
-                  )}
-                </motion.div>
-              );
-            })}
-
-            {/* Fallback: if step title mentions an algo but no block does, show at end */}
-            {showTitleAlgo && (
-              <motion.div variants={blockItemVariants}>
-                <AlgorithmVisualizer algorithm={titleAlgo} />
+            {blocks.map((block, i) => (
+              <motion.div
+                key={`${currentStep}-${i}`}
+                variants={blockItemVariants}
+              >
+                <RenderBlock block={block} blockKey={`${currentStep}-${i}`} />
               </motion.div>
-            )}
+            ))}
           </motion.div>
         </motion.div>
       </AnimatePresence>
