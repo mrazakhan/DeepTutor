@@ -19,6 +19,11 @@ router = APIRouter()
 class PreloadRequest(BaseModel):
     generated_by: str | None = None
 
+
+class PatchContentRequest(BaseModel):
+    key: str  # "intro", "exam", "mistakes"
+    content: str
+
 # Ensure tables exist on import
 init_db()
 
@@ -226,6 +231,37 @@ async def get_topic_content(course_id: str, topic_id: str):
             "generated_by": tc.generated_by,
             "created_at": tc.created_at.isoformat() if tc.created_at else None,
         }
+    finally:
+        db.close()
+
+
+@router.patch("/{course_id}/topics/{topic_id}/content")
+async def patch_topic_content(course_id: str, topic_id: str, body: PatchContentRequest):
+    """Save a single content key (intro/exam/mistakes) without overwriting others."""
+    ALLOWED_KEYS = {"intro", "exam", "mistakes"}
+    if body.key not in ALLOWED_KEYS:
+        raise HTTPException(status_code=400, detail=f"Key must be one of {ALLOWED_KEYS}")
+
+    db = get_db()
+    try:
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        if not topic or topic.unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        tc = db.query(TopicContent).filter(TopicContent.topic_id == topic_id).first()
+        if tc:
+            existing = json.loads(tc.content)
+            existing[body.key] = body.content
+            tc.content = json.dumps(existing)
+        else:
+            tc = TopicContent(
+                topic_id=topic_id,
+                content=json.dumps({body.key: body.content}),
+                generated_by="ai-cached",
+            )
+            db.add(tc)
+        db.commit()
+        return {"status": "ok", "key": body.key}
     finally:
         db.close()
 

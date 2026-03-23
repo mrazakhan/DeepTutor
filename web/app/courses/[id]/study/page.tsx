@@ -11,6 +11,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false });
+const StepByStepViewer = dynamic(() => import("@/components/StepByStepViewer"), { ssr: false });
 import {
   ArrowLeft,
   Bot,
@@ -192,6 +193,10 @@ export default function StudyPage({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const pendingInlineEditorRef = useRef(false);
+  // Step-by-step intro viewer
+  const [activeIntroContent, setActiveIntroContent] = useState<string | null>(null);
+  // Cache AI responses — track which suggestion key triggered the current WS request
+  const pendingSuggestionKeyRef = useRef<SuggestionKey | null>(null);
 
   // Auto-collapse sidebar on study page for more room
   const { sidebarCollapsed, setSidebarCollapsed } = useGlobal();
@@ -342,6 +347,10 @@ export default function StudyPage({
         setInlineEditorCode("");
         pendingInlineEditorRef.current = true;
       }
+      // Track suggestion key for caching the AI response
+      if (key === "intro" || key === "exam" || key === "mistakes") {
+        pendingSuggestionKeyRef.current = key;
+      }
       sendMessage(label);
       return;
     }
@@ -401,19 +410,28 @@ export default function StudyPage({
       return;
     }
 
-    // intro, exam, mistakes — simple text content
+    // intro, exam, mistakes — text content
     const textKeys: Record<string, string | undefined> = {
       intro: preloadedContent.intro,
       exam: preloadedContent.exam,
       mistakes: preloadedContent.mistakes,
     };
     if (textKeys[key]) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: label },
-        { role: "assistant", content: textKeys[key]! },
-      ]);
+      setMessages((prev) => [...prev, { role: "user", content: label }]);
+      if (key === "intro") {
+        // Show step-by-step viewer for intro content
+        setActiveIntroContent(textKeys[key]!);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: textKeys[key]! },
+        ]);
+      }
     } else {
+      // No preloaded content — send to AI and cache the response
+      if (key === "intro" || key === "exam" || key === "mistakes") {
+        pendingSuggestionKeyRef.current = key;
+      }
       sendMessage(label);
     }
   }
@@ -594,6 +612,31 @@ export default function StudyPage({
             pendingInlineEditorRef.current = false;
             setShowInlineEditor(true);
             setInlineEditorCode("");
+          }
+          // Cache AI response for cacheable suggestion keys
+          const cacheKey = pendingSuggestionKeyRef.current;
+          if (cacheKey && topicId && ["intro", "exam", "mistakes"].includes(cacheKey)) {
+            pendingSuggestionKeyRef.current = null;
+            const token = localStorage.getItem("deeptutor_token");
+            fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/content`), {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ key: cacheKey, content: data.content }),
+            })
+              .then(() => {
+                // Update local preloadedContent so button turns purple
+                setPreloadedContent((prev) => ({
+                  ...prev,
+                  [cacheKey]: data.content,
+                } as PreloadedContent));
+              })
+              .catch(console.error);
+            // Show step-by-step viewer for intro responses
+            if (cacheKey === "intro") {
+              setActiveIntroContent(data.content);
+            }
+          } else {
+            pendingSuggestionKeyRef.current = null;
           }
           ws.close();
         } else if (data.type === "error") {
@@ -851,6 +894,29 @@ export default function StudyPage({
             )}
           </div>
         ))}
+
+        {/* Step-by-step intro viewer */}
+        {activeIntroContent && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="flex-1 max-w-[85%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm leading-relaxed">
+              <StepByStepViewer
+                content={activeIntroContent}
+                topicTitle={topic?.title}
+                onDone={() => {
+                  // Push full content into messages for chat history, then clear viewer
+                  setMessages((prev) => [
+                    ...prev,
+                    { role: "assistant", content: activeIntroContent },
+                  ]);
+                  setActiveIntroContent(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Interactive MCQ */}
         {activeMCQ && !showMCQExplanation && (
