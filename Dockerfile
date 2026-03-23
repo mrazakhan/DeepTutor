@@ -124,18 +124,8 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 COPY --from=python-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/bin /usr/local/bin
 
-# Copy built frontend from frontend-builder stage
-COPY --from=frontend-builder /app/web/.next ./web/.next
-COPY --from=frontend-builder /app/web/public ./web/public
-COPY --from=frontend-builder /app/web/package.json ./web/package.json
-COPY --from=frontend-builder /app/web/next.config.js ./web/next.config.js
-COPY --from=frontend-builder /app/web/tsconfig.json ./web/tsconfig.json
-COPY --from=frontend-builder /app/web/node_modules ./web/node_modules
-COPY --from=frontend-builder /app/web/app ./web/app
-COPY --from=frontend-builder /app/web/components ./web/components
-COPY --from=frontend-builder /app/web/lib ./web/lib
-COPY --from=frontend-builder /app/web/i18n ./web/i18n
-COPY --from=frontend-builder /app/web/context ./web/context
+# Copy entire frontend from frontend-builder stage (dev mode needs all source files)
+COPY --from=frontend-builder /app/web ./web
 
 # Copy application source code
 COPY src/ ./src/
