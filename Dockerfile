@@ -298,6 +298,10 @@ echo "   - config/main.yaml"
 echo "   - config/agents.yaml"
 echo "============================================"
 
+# Seed courses and test users (idempotent — safe to run on every start)
+echo "🌱 Seeding courses and users..."
+python scripts/seed_courses.py 2>&1 || echo "   ⚠️ Seeding failed (non-fatal)"
+
 # Start supervisord
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/deeptutor.conf
 EOF
