@@ -129,10 +129,13 @@ COPY --from=frontend-builder /app/web/.next ./web/.next
 COPY --from=frontend-builder /app/web/public ./web/public
 COPY --from=frontend-builder /app/web/package.json ./web/package.json
 COPY --from=frontend-builder /app/web/next.config.js ./web/next.config.js
+COPY --from=frontend-builder /app/web/tsconfig.json ./web/tsconfig.json
 COPY --from=frontend-builder /app/web/node_modules ./web/node_modules
 COPY --from=frontend-builder /app/web/app ./web/app
 COPY --from=frontend-builder /app/web/components ./web/components
 COPY --from=frontend-builder /app/web/lib ./web/lib
+COPY --from=frontend-builder /app/web/i18n ./web/i18n
+COPY --from=frontend-builder /app/web/context ./web/context
 
 # Copy application source code
 COPY src/ ./src/
