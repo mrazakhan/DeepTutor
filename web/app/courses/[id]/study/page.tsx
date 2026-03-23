@@ -15,6 +15,7 @@ const StepByStepViewer = dynamic(() => import("@/components/StepByStepViewer"), 
 import {
   ArrowLeft,
   Bot,
+  GraduationCap,
   Loader2,
   Send,
   User,
@@ -202,6 +203,11 @@ export default function StudyPage({
   const [additionalMCQs, setAdditionalMCQs] = useState<MCQuestion[]>([]);
   const [additionalMCQIndex, setAdditionalMCQIndex] = useState(0);
   const [generatingQuestions, setGeneratingQuestions] = useState(false);
+  // Assessment mode
+  const [assessmentMode, setAssessmentMode] = useState(false);
+  const [assessmentQuestions, setAssessmentQuestions] = useState<MCQuestion[]>([]);
+  const [assessmentIndex, setAssessmentIndex] = useState(0);
+  const [assessmentScore, setAssessmentScore] = useState<{ correct: number; total: number }>({ correct: 0, total: 0 });
 
   // Auto-collapse sidebar on study page for more room
   const { sidebarCollapsed, setSidebarCollapsed } = useGlobal();
@@ -823,23 +829,62 @@ export default function StudyPage({
               {topicLabel}
             </div>
           </div>
-          {/* Proficiency badge */}
+          {/* Proficiency display with progress bar */}
           {topicProficiency && topicProficiency.total_questions > 0 && (
             <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 ${
-                topicProficiency.proficiency >= 80
-                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
-                  : topicProficiency.proficiency >= 50
-                  ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
-                  : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
-              }`}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex-shrink-0"
               title={`${topicProficiency.correct_answers}/${topicProficiency.total_questions} correct`}
             >
-              <span className="font-bold">{topicProficiency.proficiency}%</span>
-              <span className="text-[10px] opacity-70">
-                ({topicProficiency.correct_answers}/{topicProficiency.total_questions})
+              <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    topicProficiency.proficiency >= 80
+                      ? "bg-emerald-500"
+                      : topicProficiency.proficiency >= 50
+                      ? "bg-amber-500"
+                      : "bg-red-400"
+                  }`}
+                  style={{ width: `${topicProficiency.proficiency}%` }}
+                />
+              </div>
+              <span className={`text-xs font-bold ${
+                topicProficiency.proficiency >= 80
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : topicProficiency.proficiency >= 50
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-red-600 dark:text-red-400"
+              }`}>
+                {topicProficiency.proficiency}%
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {topicProficiency.correct_answers}/{topicProficiency.total_questions}
               </span>
             </div>
+          )}
+          {/* Take Assessment button */}
+          {user && topicId && preloadedContent && (
+            <button
+              onClick={() => {
+                // Launch assessment mode — generate questions and start quiz
+                if (preloadedContent?.practice_mcq && preloadedContent.practice_mcq.length > 0) {
+                  setAssessmentMode(true);
+                  setAssessmentQuestions(preloadedContent.practice_mcq.map(tryRecoverMCQ).filter(q => !q.raw_text));
+                  setAssessmentIndex(0);
+                  setAssessmentScore({ correct: 0, total: 0 });
+                  setSelectedAnswer(null);
+                  setShowMCQExplanation(false);
+                  setActiveMCQ(null);
+                  setMessages(prev => [...prev, { role: "user", content: "📝 Take Assessment" }]);
+                } else {
+                  handleGenerateMoreQuestions();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex-shrink-0
+                border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              {t("Assess")}
+            </button>
           )}
           {/* Upload button */}
           <button
@@ -1038,8 +1083,196 @@ export default function StudyPage({
           </div>
         )}
 
+        {/* Assessment Mode */}
+        {assessmentMode && assessmentQuestions.length > 0 && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <GraduationCap className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="max-w-[85%] rounded-xl px-4 py-3 bg-gradient-to-b from-purple-50 to-white dark:from-purple-950/20 dark:to-slate-800 border border-purple-200 dark:border-purple-800 text-slate-800 dark:text-slate-200">
+              {/* Assessment header */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  Assessment
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Q{assessmentIndex + 1}/{assessmentQuestions.length}
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    assessmentScore.total === 0 ? "bg-slate-100 dark:bg-slate-700 text-slate-400" :
+                    (assessmentScore.correct / assessmentScore.total) >= 0.7 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  }`}>
+                    {assessmentScore.correct}/{assessmentScore.total}
+                  </span>
+                </div>
+              </div>
+              {/* Progress bar */}
+              <div className="h-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden mb-4">
+                <div
+                  className="h-full bg-purple-500 rounded-full transition-all duration-300"
+                  style={{ width: `${((assessmentIndex + 1) / assessmentQuestions.length) * 100}%` }}
+                />
+              </div>
+
+              {assessmentIndex < assessmentQuestions.length ? (() => {
+                const q = assessmentQuestions[assessmentIndex];
+                return (
+                  <>
+                    <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                        {processLatexContent(q.question)}
+                      </ReactMarkdown>
+                    </div>
+                    <div className="space-y-2 mb-4">
+                      {Object.entries(q.options).map(([letter, text]) => {
+                        const isSelected = selectedAnswer === letter;
+                        const isSubmitted = showMCQExplanation;
+                        const isCorrect = letter === q.correct;
+                        let btnClass = "border-slate-200 dark:border-slate-600 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10";
+                        if (isSubmitted && isCorrect) {
+                          btnClass = "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500";
+                        } else if (isSubmitted && isSelected && !isCorrect) {
+                          btnClass = "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 ring-1 ring-red-400";
+                        } else if (isSelected) {
+                          btnClass = "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 ring-1 ring-purple-500";
+                        }
+                        return (
+                          <button
+                            key={letter}
+                            onClick={() => !showMCQExplanation && handleAnswerSelect(letter)}
+                            disabled={showMCQExplanation}
+                            className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${btnClass}`}
+                          >
+                            <span className="font-semibold mr-2">({letter})</span>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeKatex]}
+                              components={{ p: ({ children }) => <span>{children}</span> }}
+                            >
+                              {processLatexContent(text)}
+                            </ReactMarkdown>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Explanation shown after submit */}
+                    {showMCQExplanation && (
+                      <div className={`mb-4 p-3 rounded-lg text-xs ${
+                        selectedAnswer === q.correct
+                          ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+                          : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+                      }`}>
+                        <div className="font-semibold mb-1">
+                          {selectedAnswer === q.correct ? "✅ Correct!" : `❌ Incorrect — correct answer: (${q.correct})`}
+                        </div>
+                        <div className="prose prose-xs dark:prose-invert max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                            {processLatexContent(q.explanation)}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      {!showMCQExplanation ? (
+                        <button
+                          onClick={() => {
+                            if (!selectedAnswer) return;
+                            setShowMCQExplanation(true);
+                            const isCorrect = selectedAnswer === q.correct;
+                            setAssessmentScore(prev => ({
+                              correct: prev.correct + (isCorrect ? 1 : 0),
+                              total: prev.total + 1,
+                            }));
+                            // Submit to backend
+                            if (topicId && user) {
+                              const token = localStorage.getItem("deeptutor_token");
+                              fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/submit-answer`), {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({
+                                  question_type: "mcq",
+                                  question_text: q.question,
+                                  student_answer: selectedAnswer,
+                                  correct_answer: q.correct,
+                                  is_correct: isCorrect,
+                                  explanation: q.explanation,
+                                }),
+                              })
+                                .then(res => res.json())
+                                .then(data => {
+                                  setTopicProficiency({
+                                    proficiency: data.proficiency,
+                                    total_questions: data.total_questions,
+                                    correct_answers: data.correct_answers,
+                                  });
+                                })
+                                .catch(console.error);
+                            }
+                          }}
+                          disabled={!selectedAnswer}
+                          className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-medium hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Submit
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const nextIdx = assessmentIndex + 1;
+                            if (nextIdx < assessmentQuestions.length) {
+                              setAssessmentIndex(nextIdx);
+                              setSelectedAnswer(null);
+                              setShowMCQExplanation(false);
+                            } else {
+                              // Assessment complete — show results
+                              const score = assessmentScore;
+                              const pct = Math.round((score.correct / score.total) * 100);
+                              const emoji = pct >= 80 ? "🎉" : pct >= 60 ? "👍" : "📚";
+                              setMessages(prev => [...prev, {
+                                role: "assistant",
+                                content: `${emoji} **Assessment Complete!**\n\nYou scored **${score.correct}/${score.total}** (${pct}%)\n\n${
+                                  pct >= 80 ? "Excellent! You've mastered this topic." :
+                                  pct >= 60 ? "Good progress! Review the questions you missed and try again." :
+                                  "Keep studying! Review the explanations and practice more to improve."
+                                }\n\n${pct < 70 ? "💡 **Tip:** Click **More Practice Questions** below to generate additional practice tailored to your level." : ""}`,
+                              }]);
+                              setAssessmentMode(false);
+                              setAssessmentQuestions([]);
+                              setAssessmentIndex(0);
+                              setSelectedAnswer(null);
+                              setShowMCQExplanation(true); // Show "generate more" buttons
+                            }
+                          }}
+                          className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-medium hover:bg-purple-600 transition-colors"
+                        >
+                          {assessmentIndex + 1 < assessmentQuestions.length ? "Next Question →" : "See Results"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setAssessmentMode(false);
+                          setAssessmentQuestions([]);
+                          setSelectedAnswer(null);
+                          setShowMCQExplanation(false);
+                        }}
+                        className="px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        Exit
+                      </button>
+                    </div>
+                  </>
+                );
+              })() : null}
+            </div>
+          </div>
+        )}
+
         {/* Interactive MCQ */}
-        {activeMCQ && !showMCQExplanation && (
+        {activeMCQ && !showMCQExplanation && !assessmentMode && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot className="w-4 h-4 text-blue-500" />
