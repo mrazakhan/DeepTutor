@@ -197,6 +197,11 @@ export default function StudyPage({
   const [activeIntroContent, setActiveIntroContent] = useState<string | null>(null);
   // Cache AI responses — track which suggestion key triggered the current WS request
   const pendingSuggestionKeyRef = useRef<SuggestionKey | null>(null);
+  // Assessment / progress tracking
+  const [topicProficiency, setTopicProficiency] = useState<{ proficiency: number; total_questions: number; correct_answers: number } | null>(null);
+  const [additionalMCQs, setAdditionalMCQs] = useState<MCQuestion[]>([]);
+  const [additionalMCQIndex, setAdditionalMCQIndex] = useState(0);
+  const [generatingQuestions, setGeneratingQuestions] = useState(false);
 
   // Auto-collapse sidebar on study page for more room
   const { sidebarCollapsed, setSidebarCollapsed } = useGlobal();
@@ -270,6 +275,28 @@ export default function StudyPage({
     }
     loadPreloaded();
   }, [courseId, topicId]);
+
+  // Load topic progress/proficiency
+  useEffect(() => {
+    if (!topicId || !user) return;
+    async function loadProgress() {
+      try {
+        const token = localStorage.getItem("deeptutor_token");
+        const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/progress`), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.total_questions > 0) {
+            setTopicProficiency(data);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load progress:", err);
+      }
+    }
+    loadProgress();
+  }, [courseId, topicId, user]);
 
   // Load user-uploaded files for this course
   useEffect(() => {
@@ -452,6 +479,32 @@ export default function StudyPage({
     const fullExplanation = `${resultMsg}\n\n---\n\n${activeMCQ.explanation}`;
     setMessages((prev) => [...prev, { role: "assistant", content: fullExplanation }]);
     setActiveMCQ(null);
+
+    // Submit answer to assessment API
+    if (topicId && user) {
+      const token = localStorage.getItem("deeptutor_token");
+      fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/submit-answer`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          question_type: "mcq",
+          question_text: activeMCQ.question,
+          student_answer: selectedAnswer,
+          correct_answer: activeMCQ.correct,
+          is_correct: isCorrect,
+          explanation: activeMCQ.explanation,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          setTopicProficiency({
+            proficiency: data.proficiency,
+            total_questions: data.total_questions,
+            correct_answers: data.correct_answers,
+          });
+        })
+        .catch(console.error);
+    }
   }
 
   function handleNextMCQ() {
@@ -515,6 +568,55 @@ export default function StudyPage({
       setMessages((prev) => [
         ...prev,
         { role: "user", content: `Practice FRQ ${nextIdx + 1} of ${frqs.length}` },
+      ]);
+    }
+  }
+
+  async function handleGenerateMoreQuestions() {
+    if (!topicId || generatingQuestions) return;
+    setGeneratingQuestions(true);
+    try {
+      const token = localStorage.getItem("deeptutor_token");
+      const res = await fetch(
+        apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/generate-questions`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ count: 3 }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const questions = (data.questions || []).filter((q: MCQuestion) => q.question && q.options);
+        if (questions.length > 0) {
+          setAdditionalMCQs(questions);
+          setAdditionalMCQIndex(0);
+          setActiveMCQ(questions[0]);
+          setSelectedAnswer(null);
+          setShowMCQExplanation(false);
+          setMessages((prev) => [
+            ...prev,
+            { role: "user", content: "Generate more practice questions" },
+          ]);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to generate questions:", err);
+    } finally {
+      setGeneratingQuestions(false);
+    }
+  }
+
+  function handleNextAdditionalMCQ() {
+    const nextIdx = additionalMCQIndex + 1;
+    if (nextIdx < additionalMCQs.length) {
+      setAdditionalMCQIndex(nextIdx);
+      setActiveMCQ(additionalMCQs[nextIdx]);
+      setSelectedAnswer(null);
+      setShowMCQExplanation(false);
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${additionalMCQs.length}` },
       ]);
     }
   }
@@ -721,6 +823,24 @@ export default function StudyPage({
               {topicLabel}
             </div>
           </div>
+          {/* Proficiency badge */}
+          {topicProficiency && topicProficiency.total_questions > 0 && (
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 ${
+                topicProficiency.proficiency >= 80
+                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                  : topicProficiency.proficiency >= 50
+                  ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
+                  : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
+              }`}
+              title={`${topicProficiency.correct_answers}/${topicProficiency.total_questions} correct`}
+            >
+              <span className="font-bold">{topicProficiency.proficiency}%</span>
+              <span className="text-[10px] opacity-70">
+                ({topicProficiency.correct_answers}/{topicProficiency.total_questions})
+              </span>
+            </div>
+          )}
           {/* Upload button */}
           <button
             onClick={() => setShowUploadPanel(!showUploadPanel)}
@@ -970,15 +1090,41 @@ export default function StudyPage({
           </div>
         )}
 
-        {/* "Next MCQ" button after explanation */}
-        {showMCQExplanation && preloadedContent?.practice_mcq && mcqIndex < (preloadedContent.practice_mcq.length - 1) && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleNextMCQ}
-              className="text-xs px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
-            >
-              Next MCQ →
-            </button>
+        {/* "Next MCQ" / "Generate More" buttons after explanation */}
+        {showMCQExplanation && (
+          <div className="flex justify-center gap-2 flex-wrap">
+            {/* Next preloaded MCQ */}
+            {preloadedContent?.practice_mcq && mcqIndex < (preloadedContent.practice_mcq.length - 1) && additionalMCQs.length === 0 && (
+              <button
+                onClick={handleNextMCQ}
+                className="text-xs px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+              >
+                Next MCQ →
+              </button>
+            )}
+            {/* Next additional MCQ */}
+            {additionalMCQs.length > 0 && additionalMCQIndex < additionalMCQs.length - 1 && (
+              <button
+                onClick={handleNextAdditionalMCQ}
+                className="text-xs px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+              >
+                Next MCQ →
+              </button>
+            )}
+            {/* Generate more questions button */}
+            {user && topicId && (
+              <button
+                onClick={handleGenerateMoreQuestions}
+                disabled={generatingQuestions}
+                className="text-xs px-4 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {generatingQuestions ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" /> Generating...</>
+                ) : (
+                  <><Sparkles className="w-3 h-3" /> More Practice Questions</>
+                )}
+              </button>
+            )}
           </div>
         )}
 
