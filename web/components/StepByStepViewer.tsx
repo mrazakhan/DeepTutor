@@ -19,15 +19,22 @@ interface StepByStepViewerProps {
   topicTitle?: string;
 }
 
-/** Detect algorithm references in text for auto-visualization */
-function detectAlgorithm(
-  text: string
-): "bubble" | "selection" | "insertion" | null {
+type AlgoType = "bubble" | "selection" | "insertion";
+
+/** Detect ALL algorithm references in text for auto-visualization */
+function detectAlgorithms(text: string): AlgoType[] {
   const lower = text.toLowerCase();
-  if (lower.includes("bubble sort")) return "bubble";
-  if (lower.includes("selection sort")) return "selection";
-  if (lower.includes("insertion sort")) return "insertion";
-  return null;
+  const found: AlgoType[] = [];
+  if (lower.includes("bubble sort")) found.push("bubble");
+  if (lower.includes("selection sort")) found.push("selection");
+  if (lower.includes("insertion sort")) found.push("insertion");
+  return found;
+}
+
+/** Detect the first algorithm reference in text */
+function detectAlgorithm(text: string): AlgoType | null {
+  const algos = detectAlgorithms(text);
+  return algos.length > 0 ? algos[0] : null;
 }
 
 /** Split markdown into sections by ## headings, with fallback to --- */
@@ -94,6 +101,31 @@ function splitIntoBlocks(body: string): string[] {
   }
   if (current.trim()) blocks.push(current.trim());
   return blocks.filter(Boolean);
+}
+
+/**
+ * Given blocks of text, find which algorithms are mentioned and where.
+ * Returns an array of { blockIndex, algorithm } for placing visualizers.
+ * Each algorithm only gets one visualizer (at the LAST block that mentions it).
+ */
+function findAlgoInsertionPoints(
+  blocks: string[]
+): { afterBlockIndex: number; algorithm: AlgoType }[] {
+  const algoLastBlock = new Map<AlgoType, number>();
+
+  blocks.forEach((block, i) => {
+    const algos = detectAlgorithms(block);
+    for (const algo of algos) {
+      algoLastBlock.set(algo, i);
+    }
+  });
+
+  // Sort by block index so visualizers appear in document order
+  const points = Array.from(algoLastBlock.entries())
+    .map(([algorithm, afterBlockIndex]) => ({ afterBlockIndex, algorithm }))
+    .sort((a, b) => a.afterBlockIndex - b.afterBlockIndex);
+
+  return points;
 }
 
 /** Custom ReactMarkdown components with concept highlighting */
@@ -170,12 +202,6 @@ export default function StepByStepViewer({
   const steps = useMemo(() => splitIntoSteps(content), [content]);
   const totalSteps = steps.length;
 
-  // Detect if any step mentions a sorting algorithm
-  const detectedAlgo = useMemo(() => {
-    const fullText = content + " " + (topicTitle || "");
-    return detectAlgorithm(fullText);
-  }, [content, topicTitle]);
-
   function goNext() {
     if (currentStep < totalSteps - 1) {
       setDirection(1);
@@ -195,6 +221,10 @@ export default function StepByStepViewer({
   }
 
   if (showAll) {
+    // In "show all" mode, render all blocks with inline visualizers
+    const allBlocks = splitIntoBlocks(content);
+    const insertionPoints = findAlgoInsertionPoints(allBlocks);
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -205,18 +235,29 @@ export default function StepByStepViewer({
             onClick={() => setShowAll(false)}
             className="text-xs text-blue-500 hover:text-blue-600 transition-colors"
           >
-            ← Back to steps
+            Back to steps
           </button>
         </div>
-        {detectedAlgo && <AlgorithmVisualizer algorithm={detectedAlgo} />}
-        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-li:my-0.5 prose-pre:my-2">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-            components={highlightComponents}
-          >
-            {processLatexContent(content)}
-          </ReactMarkdown>
+        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-li:my-0.5 prose-pre:my-2 space-y-2">
+          {allBlocks.map((block, i) => {
+            const algoPoint = insertionPoints.find(
+              (p) => p.afterBlockIndex === i
+            );
+            return (
+              <div key={`all-${i}`}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={highlightComponents}
+                >
+                  {processLatexContent(block)}
+                </ReactMarkdown>
+                {algoPoint && (
+                  <AlgorithmVisualizer algorithm={algoPoint.algorithm} />
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="flex justify-center">
           <button
@@ -233,8 +274,14 @@ export default function StepByStepViewer({
   const step = steps[currentStep];
   const blocks = splitIntoBlocks(step.body);
   const isLastStep = currentStep === totalSteps - 1;
-  // Show algorithm visualizer on the step that discusses sorting
-  const stepAlgo = detectAlgorithm(step.title + " " + step.body);
+
+  // Find algorithm insertion points for THIS step's blocks
+  const stepInsertionPoints = findAlgoInsertionPoints(blocks);
+
+  // Also check if the step title mentions an algorithm not found in any block
+  const titleAlgo = detectAlgorithm(step.title);
+  const blockAlgos = new Set(stepInsertionPoints.map((p) => p.algorithm));
+  const showTitleAlgo = titleAlgo && !blockAlgos.has(titleAlgo);
 
   return (
     <div className="space-y-4">
@@ -269,7 +316,7 @@ export default function StepByStepViewer({
         </button>
       </div>
 
-      {/* Step title */}
+      {/* Step content with animated transition */}
       <AnimatePresence mode="wait" custom={direction}>
         <motion.div
           key={currentStep}
@@ -280,6 +327,7 @@ export default function StepByStepViewer({
           exit="exit"
           transition={{ duration: 0.3, ease: "easeInOut" }}
         >
+          {/* Step title */}
           <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs flex items-center justify-center font-bold">
               {currentStep + 1}
@@ -287,31 +335,43 @@ export default function StepByStepViewer({
             {step.title}
           </h3>
 
-          {/* Algorithm visualizer if detected */}
-          {stepAlgo && <AlgorithmVisualizer algorithm={stepAlgo} />}
-          {/* Also show on first step if algorithm detected globally */}
-          {!stepAlgo && currentStep === 0 && detectedAlgo && (
-            <AlgorithmVisualizer algorithm={detectedAlgo} />
-          )}
-
-          {/* Staggered block reveal */}
+          {/* Staggered block reveal with inline algorithm visualizers */}
           <motion.div
             className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-li:my-0.5 prose-pre:my-2 space-y-2"
             variants={blockContainerVariants}
             initial="hidden"
             animate="visible"
           >
-            {blocks.map((block, i) => (
-              <motion.div key={`${currentStep}-${i}`} variants={blockItemVariants}>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={highlightComponents}
+            {blocks.map((block, i) => {
+              const algoPoint = stepInsertionPoints.find(
+                (p) => p.afterBlockIndex === i
+              );
+              return (
+                <motion.div
+                  key={`${currentStep}-${i}`}
+                  variants={blockItemVariants}
                 >
-                  {processLatexContent(block)}
-                </ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={highlightComponents}
+                  >
+                    {processLatexContent(block)}
+                  </ReactMarkdown>
+                  {/* Inline visualizer — appears right after the block that explains this algorithm */}
+                  {algoPoint && (
+                    <AlgorithmVisualizer algorithm={algoPoint.algorithm} />
+                  )}
+                </motion.div>
+              );
+            })}
+
+            {/* Fallback: if step title mentions an algo but no block does, show at end */}
+            {showTitleAlgo && (
+              <motion.div variants={blockItemVariants}>
+                <AlgorithmVisualizer algorithm={titleAlgo} />
               </motion.div>
-            ))}
+            )}
           </motion.div>
         </motion.div>
       </AnimatePresence>
@@ -323,7 +383,7 @@ export default function StepByStepViewer({
           disabled={currentStep === 0}
           className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          ← Back
+          Back
         </button>
 
         <div className="flex gap-2">
@@ -332,14 +392,14 @@ export default function StepByStepViewer({
               onClick={handleDone}
               className="px-4 py-1.5 text-xs rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition-colors"
             >
-              Done ✓
+              Done
             </button>
           ) : (
             <button
               onClick={goNext}
               className="px-4 py-1.5 text-xs rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 transition-colors"
             >
-              Continue →
+              Continue
             </button>
           )}
         </div>
