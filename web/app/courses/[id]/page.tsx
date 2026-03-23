@@ -286,6 +286,46 @@ export default function CourseDetailPage({
         })()}
       </div>
 
+      {/* Overall Course Progress Card */}
+      {user && Object.keys(topicProgress).length > 0 && (() => {
+        const assessed = Object.values(topicProgress).filter(p => p.total_questions > 0);
+        const avgProf = assessed.length > 0
+          ? Math.round(assessed.reduce((sum, p) => sum + p.proficiency, 0) / assessed.length)
+          : 0;
+        const totalCorrect = assessed.reduce((s, p) => s + p.correct_answers, 0);
+        const totalQs = assessed.reduce((s, p) => s + p.total_questions, 0);
+        const mastered = assessed.filter(p => p.proficiency >= 80).length;
+        const developing = assessed.filter(p => p.proficiency >= 50 && p.proficiency < 80).length;
+        const needsWork = assessed.filter(p => p.proficiency < 50).length;
+        return (
+          <div className="mb-8 p-5 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border border-blue-100 dark:border-blue-900/50">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-blue-500" />
+                {t("Your Progress")}
+              </h2>
+              <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{avgProf}%</span>
+            </div>
+            {/* Overall progress bar */}
+            <div className="h-3 bg-white/60 dark:bg-slate-800/60 rounded-full overflow-hidden mb-3">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  avgProf >= 80 ? "bg-emerald-500" : avgProf >= 50 ? "bg-amber-500" : "bg-red-500"
+                }`}
+                style={{ width: `${avgProf}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
+              <span>{totalCorrect}/{totalQs} questions correct</span>
+              <span className="text-emerald-600 dark:text-emerald-400">✓ {mastered} mastered</span>
+              <span className="text-amber-600 dark:text-amber-400">◐ {developing} developing</span>
+              {needsWork > 0 && <span className="text-red-600 dark:text-red-400">✗ {needsWork} needs work</span>}
+              <span className="text-slate-400">{totalTopics - assessed.length} not assessed</span>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Exam Format */}
       {course.exam_format && (
         <div className="mb-8">
@@ -385,8 +425,31 @@ export default function CourseDetailPage({
                     <div className="font-medium text-slate-800 dark:text-slate-200 text-sm">
                       {t("Unit")} {unit.unit_number}: {unit.title}
                     </div>
-                    <div className="text-xs text-slate-400 mt-0.5">
-                      {unit.topic_count} {t("topics")}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-slate-400">
+                        {unit.topic_count} {t("topics")}
+                      </span>
+                      {/* Unit progress bar */}
+                      {(() => {
+                        const unitAssessed = unit.topics.filter(t => topicProgress[t.id]?.total_questions > 0);
+                        if (unitAssessed.length === 0) return null;
+                        const unitAvg = Math.round(unitAssessed.reduce((s, t) => s + (topicProgress[t.id]?.proficiency || 0), 0) / unitAssessed.length);
+                        return (
+                          <div className="flex items-center gap-1.5 flex-1 max-w-[120px]">
+                            <div className="h-1.5 flex-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  unitAvg >= 80 ? "bg-emerald-500" : unitAvg >= 50 ? "bg-amber-500" : "bg-red-400"
+                                }`}
+                                style={{ width: `${unitAvg}%` }}
+                              />
+                            </div>
+                            <span className={`text-[10px] font-semibold ${
+                              unitAvg >= 80 ? "text-emerald-600 dark:text-emerald-400" : unitAvg >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"
+                            }`}>{unitAvg}%</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                   {isExpanded ? (
@@ -417,20 +480,36 @@ export default function CourseDetailPage({
                         >
                           {topic.title}
                         </Link>
-                        {/* Proficiency badge */}
+                        {/* Proficiency badge with mini progress bar */}
                         {topicProgress[topic.id] && topicProgress[topic.id].total_questions > 0 && (
-                          <span
-                            className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
-                              topicProgress[topic.id].proficiency >= 80
-                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                : topicProgress[topic.id].proficiency >= 50
-                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                            }`}
+                          <div
+                            className="flex items-center gap-1.5 flex-shrink-0"
                             title={`${topicProgress[topic.id].correct_answers}/${topicProgress[topic.id].total_questions} correct`}
                           >
-                            {topicProgress[topic.id].proficiency}%
-                          </span>
+                            <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  topicProgress[topic.id].proficiency >= 80
+                                    ? "bg-emerald-500"
+                                    : topicProgress[topic.id].proficiency >= 50
+                                    ? "bg-amber-500"
+                                    : "bg-red-400"
+                                }`}
+                                style={{ width: `${topicProgress[topic.id].proficiency}%` }}
+                              />
+                            </div>
+                            <span
+                              className={`text-[10px] font-semibold w-7 text-right ${
+                                topicProgress[topic.id].proficiency >= 80
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : topicProgress[topic.id].proficiency >= 50
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-red-600 dark:text-red-400"
+                              }`}
+                            >
+                              {topicProgress[topic.id].proficiency}%
+                            </span>
+                          </div>
                         )}
                         <button
                           onClick={(e) => preloadTopic(topic.id, e)}
