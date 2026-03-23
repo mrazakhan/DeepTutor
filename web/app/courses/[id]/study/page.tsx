@@ -1019,7 +1019,20 @@ export default function StudyPage({
           </div>
         )}
 
-        {messages.map((msg, idx) => (
+        {messages.map((msg, idx) => {
+          // Skip rendering if this message is a duplicate MCQ that's also showing as an interactive card
+          if (
+            msg.role === "assistant" &&
+            !msg.isStreaming &&
+            activeMCQ &&
+            msg.content.includes("(A)") &&
+            msg.content.includes("(B)") &&
+            msg.content.includes("(C)") &&
+            idx === messages.length - 1
+          ) {
+            return null;
+          }
+          return (
           <div
             key={idx}
             className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
@@ -1058,7 +1071,8 @@ export default function StudyPage({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
 
         {/* Step-by-step intro viewer */}
         {activeIntroContent && (
