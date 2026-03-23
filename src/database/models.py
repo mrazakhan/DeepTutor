@@ -125,3 +125,44 @@ class User(Base):
     display_name = Column(String(100), nullable=False)
     role = Column(String(20), nullable=False, default="student")  # student | admin
     created_at = Column(DateTime, default=utcnow)
+
+    assessments = relationship("TopicAssessment", back_populates="user", cascade="all, delete-orphan")
+
+
+class TopicAssessment(Base):
+    """Tracks a student's assessment attempts and proficiency per topic."""
+
+    __tablename__ = "topic_assessments"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    topic_id = Column(String, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
+    # Proficiency: 0-100 score based on recent performance
+    proficiency = Column(Integer, default=0)
+    total_questions = Column(Integer, default=0)
+    correct_answers = Column(Integer, default=0)
+    # Last assessment timestamp
+    last_assessed_at = Column(DateTime, default=utcnow)
+    created_at = Column(DateTime, default=utcnow)
+
+    user = relationship("User", back_populates="assessments")
+    topic = relationship("Topic")
+    answers = relationship("AssessmentAnswer", back_populates="assessment", cascade="all, delete-orphan")
+
+
+class AssessmentAnswer(Base):
+    """Individual answer records for assessment questions."""
+
+    __tablename__ = "assessment_answers"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    assessment_id = Column(String, ForeignKey("topic_assessments.id", ondelete="CASCADE"), nullable=False)
+    question_type = Column(String(10), nullable=False)  # "mcq" or "frq"
+    question_text = Column(Text, nullable=False)
+    student_answer = Column(Text, nullable=False)
+    correct_answer = Column(Text, nullable=False)
+    is_correct = Column(Boolean, nullable=False)
+    explanation = Column(Text)
+    created_at = Column(DateTime, default=utcnow)
+
+    assessment = relationship("TopicAssessment", back_populates="answers")

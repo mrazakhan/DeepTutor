@@ -16,8 +16,10 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  TrendingUp,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 interface TopicDetail {
   id: string;
@@ -66,11 +68,14 @@ export default function CourseDetailPage({
   const [contentStatus, setContentStatus] = useState<Record<string, boolean>>({});
   const [loadingTopics, setLoadingTopics] = useState<Set<string>>(new Set());
   const [preloadingAll, setPreloadingAll] = useState(false);
+  const [topicProgress, setTopicProgress] = useState<Record<string, { proficiency: number; total_questions: number; correct_answers: number }>>({});
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchCourse();
     fetchContentStatus();
-  }, [id]);
+    if (user) fetchProgress();
+  }, [id, user]);
 
   async function fetchCourse() {
     try {
@@ -98,6 +103,21 @@ export default function CourseDetailPage({
       }
     } catch (err) {
       console.error("Failed to fetch content status:", err);
+    }
+  }
+
+  async function fetchProgress() {
+    try {
+      const token = localStorage.getItem("deeptutor_token");
+      const res = await fetch(apiUrl(`/api/v1/courses/${id}/progress`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTopicProgress(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch progress:", err);
     }
   }
 
@@ -250,6 +270,20 @@ export default function CourseDetailPage({
             </span>
           </div>
         )}
+        {Object.keys(topicProgress).length > 0 && (() => {
+          const assessed = Object.values(topicProgress).filter(p => p.total_questions > 0);
+          const avgProf = assessed.length > 0
+            ? Math.round(assessed.reduce((sum, p) => sum + p.proficiency, 0) / assessed.length)
+            : 0;
+          return (
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-purple-500" />
+              <span className="text-sm text-slate-600 dark:text-slate-300">
+                {t("Progress")}: <strong>{avgProf}%</strong> ({assessed.length}/{totalTopics} {t("assessed")})
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Exam Format */}
@@ -383,6 +417,21 @@ export default function CourseDetailPage({
                         >
                           {topic.title}
                         </Link>
+                        {/* Proficiency badge */}
+                        {topicProgress[topic.id] && topicProgress[topic.id].total_questions > 0 && (
+                          <span
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
+                              topicProgress[topic.id].proficiency >= 80
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                : topicProgress[topic.id].proficiency >= 50
+                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            }`}
+                            title={`${topicProgress[topic.id].correct_answers}/${topicProgress[topic.id].total_questions} correct`}
+                          >
+                            {topicProgress[topic.id].proficiency}%
+                          </span>
+                        )}
                         <button
                           onClick={(e) => preloadTopic(topic.id, e)}
                           disabled={loadingTopics.has(topic.id) || contentStatus[topic.id]}
