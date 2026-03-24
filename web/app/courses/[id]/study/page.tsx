@@ -1078,6 +1078,10 @@ export default function StudyPage({
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
               {SUGGESTION_KEYS.map(({ label, key }) => {
+                // Hide FRQ button if preloaded content has no FRQs (course doesn't have FRQ section)
+                if (key === "practice_frq" && preloadedContent && !preloadedContent.practice_frq?.length) {
+                  return null;
+                }
                 const text = label(topic?.title || "this topic");
                 let hasPreloaded = false;
                 let count = 0;
