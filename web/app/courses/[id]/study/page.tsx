@@ -98,6 +98,18 @@ const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: SuggestionK
   { label: () => "What are common mistakes students make?", key: "mistakes" },
 ];
 
+const MCQ_SESSION_SIZE = 5; // Show 5 MCQs per practice session from the larger pool
+
+/** Fisher-Yates shuffle (returns a new array). */
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /** Try to recover a structured MCQ from raw_text (when JSON parsing failed on backend). */
 function tryRecoverMCQ(mcq: MCQuestion): MCQuestion {
   if (!mcq.raw_text) return mcq;
@@ -212,6 +224,7 @@ export default function StudyPage({
   // MCQ state
   const [activeMCQ, setActiveMCQ] = useState<MCQuestion | null>(null);
   const [mcqIndex, setMcqIndex] = useState(0);
+  const [sessionMcqs, setSessionMcqs] = useState<MCQuestion[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showMCQExplanation, setShowMCQExplanation] = useState(false);
   // FRQ state
@@ -478,18 +491,17 @@ export default function StudyPage({
       let mcqs = preloadedContent.practice_mcq;
       // Try to recover any raw_text items
       if (mcqs && mcqs.length > 0) {
-        mcqs = mcqs.map(tryRecoverMCQ);
+        mcqs = mcqs.map(tryRecoverMCQ).filter(q => !q.raw_text);
       }
-      if (mcqs && mcqs.length > 0 && !mcqs[0].raw_text) {
+      if (mcqs && mcqs.length > 0) {
+        // Shuffle the full pool and pick a session-sized subset
+        const picked = shuffleArray(mcqs).slice(0, MCQ_SESSION_SIZE);
+        setSessionMcqs(picked);
         setMessages((prev) => [...prev, { role: "user", content: label }]);
         setMcqIndex(0);
-        setActiveMCQ(mcqs[0]);
+        setActiveMCQ(picked[0]);
         setSelectedAnswer(null);
         setShowMCQExplanation(false);
-        // Update preloadedContent with recovered MCQs for next navigation
-        if (preloadedContent) {
-          preloadedContent.practice_mcq = mcqs;
-        }
         return;
       }
       // legacy fallback
@@ -601,17 +613,16 @@ export default function StudyPage({
   }
 
   function handleNextMCQ() {
-    const mcqs = preloadedContent?.practice_mcq;
-    if (!mcqs) return;
+    if (!sessionMcqs.length) return;
     const nextIdx = mcqIndex + 1;
-    if (nextIdx < mcqs.length && !mcqs[nextIdx].raw_text) {
+    if (nextIdx < sessionMcqs.length) {
       setMcqIndex(nextIdx);
-      setActiveMCQ(mcqs[nextIdx]);
+      setActiveMCQ(sessionMcqs[nextIdx]);
       setSelectedAnswer(null);
       setShowMCQExplanation(false);
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${mcqs.length}`, type: "system" as const },
+        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${sessionMcqs.length}`, type: "system" as const },
       ]);
     }
   }
@@ -973,7 +984,8 @@ export default function StudyPage({
                 // Launch assessment mode — generate questions and start quiz
                 if (preloadedContent?.practice_mcq && preloadedContent.practice_mcq.length > 0) {
                   setAssessmentMode(true);
-                  setAssessmentQuestions(preloadedContent.practice_mcq.map(tryRecoverMCQ).filter(q => !q.raw_text));
+                  const allMcqs = preloadedContent.practice_mcq.map(tryRecoverMCQ).filter(q => !q.raw_text);
+                  setAssessmentQuestions(shuffleArray(allMcqs));
                   setAssessmentIndex(0);
                   setAssessmentScore({ correct: 0, total: 0 });
                   setSelectedAnswer(null);
@@ -1519,7 +1531,7 @@ export default function StudyPage({
         {showMCQExplanation && (
           <div className="flex justify-center gap-2 flex-wrap">
             {/* Next preloaded MCQ */}
-            {preloadedContent?.practice_mcq && mcqIndex < (preloadedContent.practice_mcq.length - 1) && additionalMCQs.length === 0 && (
+            {sessionMcqs.length > 0 && mcqIndex < (sessionMcqs.length - 1) && additionalMCQs.length === 0 && (
               <button
                 onClick={handleNextMCQ}
                 className="text-xs px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
