@@ -317,7 +317,8 @@ _PROMPT_MCQ = (
     '    "D": "Fourth option"\n'
     '  }},\n'
     '  "correct": "B",\n'
-    '  "explanation": "Detailed step-by-step explanation in markdown format"\n'
+    '  "explanation": "Detailed step-by-step explanation in markdown format",\n'
+    '  "category": "The AP CSA concept category tested, e.g. Methods, ArrayList, 2D Array, Recursion, Inheritance, Polymorphism"\n'
     '}}\n\n'
     "Make it representative of what students would see on the AP exam. "
     "The explanation should cover why the correct answer is right AND why each "

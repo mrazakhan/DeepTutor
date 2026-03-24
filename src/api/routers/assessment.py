@@ -10,6 +10,8 @@ from src.database.engine import get_db, init_db
 from src.database.models import (
     AssessmentAnswer,
     Course,
+    MIN_QUESTIONS_FOR_MASTERY,
+    ProficiencyDimension,
     Topic,
     TopicAssessment,
     TopicContent,
@@ -30,6 +32,7 @@ class SubmitAnswerRequest(BaseModel):
     correct_answer: str
     is_correct: bool
     explanation: str | None = None
+    question_category: str | None = None  # "Methods", "ArrayList", "2D Array", etc.
 
 
 class GenerateQuestionsRequest(BaseModel):
@@ -72,6 +75,30 @@ def _recalculate_proficiency(assessment: TopicAssessment) -> int:
     return min(100, max(0, int(raw)))
 
 
+def _upsert_dimension(db, user_id: str, topic_id: str, dim_type: str, dim_value: str, is_correct: bool):
+    """Upsert a proficiency dimension row."""
+    dim = (
+        db.query(ProficiencyDimension)
+        .filter(
+            ProficiencyDimension.user_id == user_id,
+            ProficiencyDimension.topic_id == topic_id,
+            ProficiencyDimension.dimension_type == dim_type,
+            ProficiencyDimension.dimension_value == dim_value,
+        )
+        .first()
+    )
+    if not dim:
+        dim = ProficiencyDimension(
+            user_id=user_id, topic_id=topic_id,
+            dimension_type=dim_type, dimension_value=dim_value,
+        )
+        db.add(dim)
+    dim.total += 1
+    if is_correct:
+        dim.correct += 1
+    dim.proficiency = min(100, max(0, int((dim.correct / dim.total) * 100))) if dim.total > 0 else 0
+
+
 @router.post("/{course_id}/topics/{topic_id}/submit-answer")
 async def submit_answer(
     course_id: str,
@@ -100,6 +127,7 @@ async def submit_answer(
             correct_answer=body.correct_answer,
             is_correct=body.is_correct,
             explanation=body.explanation,
+            question_category=body.question_category,
         )
         db.add(answer)
 
@@ -109,6 +137,12 @@ async def submit_answer(
             assessment.correct_answers += 1
         assessment.proficiency = _recalculate_proficiency(assessment)
         assessment.last_assessed_at = datetime.now(timezone.utc)
+
+        # Update per-dimension proficiency
+        _upsert_dimension(db, user_id, topic_id, "question_type", body.question_type, body.is_correct)
+        if body.question_category:
+            _upsert_dimension(db, user_id, topic_id, "category", body.question_category, body.is_correct)
+
         db.commit()
 
         return {
@@ -195,6 +229,85 @@ async def get_course_progress(course_id: str, request: Request):
             }
 
         return progress
+    finally:
+        db.close()
+
+
+@router.get("/{course_id}/topics/{topic_id}/progress/dimensions")
+async def get_topic_dimensions(course_id: str, topic_id: str, request: Request):
+    """Get per-dimension proficiency breakdown for a topic."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        dims = (
+            db.query(ProficiencyDimension)
+            .filter(
+                ProficiencyDimension.user_id == user_id,
+                ProficiencyDimension.topic_id == topic_id,
+            )
+            .all()
+        )
+
+        result: dict = {"question_type": {}, "category": {}}
+        for d in dims:
+            result.setdefault(d.dimension_type, {})[d.dimension_value] = {
+                "correct": d.correct,
+                "total": d.total,
+                "proficiency": d.proficiency,
+                "mastered": d.proficiency >= 80 and d.total >= MIN_QUESTIONS_FOR_MASTERY,
+            }
+        return result
+    finally:
+        db.close()
+
+
+@router.get("/{course_id}/progress/dimensions")
+async def get_course_dimensions(course_id: str, request: Request):
+    """Get aggregated per-dimension proficiency across all topics in a course."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        topic_ids = []
+        for unit in course.units:
+            for topic in unit.topics:
+                topic_ids.append(topic.id)
+
+        dims = (
+            db.query(ProficiencyDimension)
+            .filter(
+                ProficiencyDimension.user_id == user_id,
+                ProficiencyDimension.topic_id.in_(topic_ids),
+            )
+            .all()
+        )
+
+        # Aggregate by dimension_type + dimension_value across topics
+        agg: dict = {}
+        for d in dims:
+            key = (d.dimension_type, d.dimension_value)
+            if key not in agg:
+                agg[key] = {"correct": 0, "total": 0}
+            agg[key]["correct"] += d.correct
+            agg[key]["total"] += d.total
+
+        result: dict = {"question_type": {}, "category": {}}
+        for (dim_type, dim_value), counts in agg.items():
+            prof = int((counts["correct"] / counts["total"]) * 100) if counts["total"] > 0 else 0
+            result.setdefault(dim_type, {})[dim_value] = {
+                "correct": counts["correct"],
+                "total": counts["total"],
+                "proficiency": prof,
+                "mastered": prof >= 80 and counts["total"] >= MIN_QUESTIONS_FOR_MASTERY,
+            }
+        return result
     finally:
         db.close()
 
@@ -357,7 +470,8 @@ async def generate_additional_questions(
             '    "D": "Fourth option"\n'
             '  }},\n'
             '  "correct": "B",\n'
-            '  "explanation": "Detailed step-by-step explanation"\n'
+            '  "explanation": "Detailed step-by-step explanation",\n'
+            '  "category": "The AP CSA concept category tested, e.g. Methods, ArrayList, 2D Array, Recursion, Inheritance"\n'
             '}}\n\n'
             "The explanation should cover why the correct answer is right AND why each "
             "incorrect answer is wrong."

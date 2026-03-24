@@ -25,6 +25,7 @@ import {
   Paperclip,
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
+import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
 import { processLatexContent } from "@/lib/latex";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
@@ -39,6 +40,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   isStreaming?: boolean;
+  type?: "chat" | "mcq_source" | "frq_source" | "assessment" | "system";
 }
 
 interface TopicInfo {
@@ -64,6 +66,7 @@ interface MCQuestion {
   options: Record<string, string>;
   correct: string;
   explanation: string;
+  category?: string; // AP CSA concept category, e.g. "Methods", "ArrayList"
   raw_text?: string; // fallback if JSON parsing failed
 }
 
@@ -148,6 +151,43 @@ function tryRecoverFRQ(frq: FRQuestion): FRQuestion {
   return frq;
 }
 
+// ── Assessment session persistence (localStorage) ──
+interface AssessmentSession {
+  questions: MCQuestion[];
+  index: number;
+  score: { correct: number; total: number };
+  timestamp: number;
+}
+
+const assessmentStorageKey = (courseId: string, topicId: string) =>
+  `assessment_session_${courseId}_${topicId}`;
+
+function saveAssessmentSession(courseId: string, topicId: string, session: AssessmentSession) {
+  try {
+    localStorage.setItem(assessmentStorageKey(courseId, topicId), JSON.stringify(session));
+  } catch { /* quota exceeded */ }
+}
+
+function loadAssessmentSession(courseId: string, topicId: string): AssessmentSession | null {
+  try {
+    const raw = localStorage.getItem(assessmentStorageKey(courseId, topicId));
+    if (!raw) return null;
+    const session = JSON.parse(raw) as AssessmentSession;
+    // Expire after 24 hours
+    if (Date.now() - session.timestamp > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(assessmentStorageKey(courseId, topicId));
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function clearAssessmentSession(courseId: string, topicId: string) {
+  localStorage.removeItem(assessmentStorageKey(courseId, topicId));
+}
+
 export default function StudyPage({
   params,
 }: {
@@ -208,6 +248,11 @@ export default function StudyPage({
   const [assessmentQuestions, setAssessmentQuestions] = useState<MCQuestion[]>([]);
   const [assessmentIndex, setAssessmentIndex] = useState(0);
   const [assessmentScore, setAssessmentScore] = useState<{ correct: number; total: number }>({ correct: 0, total: 0 });
+  const [showResumeDialog, setShowResumeDialog] = useState(false);
+  const [savedSession, setSavedSession] = useState<AssessmentSession | null>(null);
+  // Multi-dimensional proficiency
+  const [dimensionData, setDimensionData] = useState<ProficiencyDimension[]>([]);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   // Auto-collapse sidebar on study page for more room
   const { sidebarCollapsed, setSidebarCollapsed } = useGlobal();
@@ -303,6 +348,47 @@ export default function StudyPage({
     }
     loadProgress();
   }, [courseId, topicId, user]);
+
+  // Load dimensional proficiency breakdown
+  useEffect(() => {
+    if (!topicId || !user) return;
+    async function loadDimensions() {
+      try {
+        const token = localStorage.getItem("deeptutor_token");
+        const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/progress/dimensions`), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const dims: ProficiencyDimension[] = [];
+          // Add question type dimensions
+          for (const [value, info] of Object.entries(data.question_type || {})) {
+            const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
+            dims.push({ label: value === "mcq" ? "MCQ Accuracy" : "FRQ Competency", ...d });
+          }
+          // Add category dimensions
+          for (const [value, info] of Object.entries(data.category || {})) {
+            const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
+            dims.push({ label: value, ...d });
+          }
+          setDimensionData(dims);
+        }
+      } catch (err) {
+        console.error("Failed to load dimensions:", err);
+      }
+    }
+    loadDimensions();
+  }, [courseId, topicId, user, topicProficiency]); // Re-fetch when proficiency updates
+
+  // Check for saved assessment session to offer resume
+  useEffect(() => {
+    if (!topicId) return;
+    const session = loadAssessmentSession(courseId, topicId);
+    if (session && session.questions.length > 0 && session.index < session.questions.length) {
+      setSavedSession(session);
+      setShowResumeDialog(true);
+    }
+  }, [courseId, topicId]);
 
   // Load user-uploaded files for this course
   useEffect(() => {
@@ -499,6 +585,7 @@ export default function StudyPage({
           correct_answer: activeMCQ.correct,
           is_correct: isCorrect,
           explanation: activeMCQ.explanation,
+          question_category: activeMCQ.category || topic?.title || null,
         }),
       })
         .then((res) => res.json())
@@ -524,7 +611,7 @@ export default function StudyPage({
       setShowMCQExplanation(false);
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${mcqs.length}` },
+        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${mcqs.length}`, type: "system" as const },
       ]);
     }
   }
@@ -573,7 +660,7 @@ export default function StudyPage({
       setShowFRQSolution(false);
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: `Practice FRQ ${nextIdx + 1} of ${frqs.length}` },
+        { role: "user", content: `Practice FRQ ${nextIdx + 1} of ${frqs.length}`, type: "system" as const },
       ]);
     }
   }
@@ -622,7 +709,7 @@ export default function StudyPage({
       setShowMCQExplanation(false);
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${additionalMCQs.length}` },
+        { role: "user", content: `Practice MCQ ${nextIdx + 1} of ${additionalMCQs.length}`, type: "system" as const },
       ]);
     }
   }
@@ -829,36 +916,54 @@ export default function StudyPage({
               {topicLabel}
             </div>
           </div>
-          {/* Proficiency display with progress bar */}
+          {/* Proficiency display with breakdown popover */}
           {topicProficiency && topicProficiency.total_questions > 0 && (
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex-shrink-0"
-              title={`${topicProficiency.correct_answers}/${topicProficiency.total_questions} correct`}
-            >
-              <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    topicProficiency.proficiency >= 80
-                      ? "bg-emerald-500"
-                      : topicProficiency.proficiency >= 50
-                      ? "bg-amber-500"
-                      : "bg-red-400"
-                  }`}
-                  style={{ width: `${topicProficiency.proficiency}%` }}
-                />
-              </div>
-              <span className={`text-xs font-bold ${
-                topicProficiency.proficiency >= 80
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : topicProficiency.proficiency >= 50
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-red-600 dark:text-red-400"
-              }`}>
-                {topicProficiency.proficiency}%
-              </span>
-              <span className="text-[10px] text-slate-400">
-                {topicProficiency.correct_answers}/{topicProficiency.total_questions}
-              </span>
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setShowBreakdown(!showBreakdown)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                title="Click for detailed breakdown"
+              >
+                <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      topicProficiency.proficiency >= 80
+                        ? "bg-emerald-500"
+                        : topicProficiency.proficiency >= 50
+                        ? "bg-amber-500"
+                        : "bg-red-400"
+                    }`}
+                    style={{ width: `${topicProficiency.proficiency}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-bold ${
+                  topicProficiency.proficiency >= 80
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : topicProficiency.proficiency >= 50
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}>
+                  {topicProficiency.proficiency}%
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {topicProficiency.correct_answers}/{topicProficiency.total_questions}
+                </span>
+              </button>
+              {/* Breakdown popover */}
+              {showBreakdown && dimensionData.length > 0 && (
+                <div className="absolute top-full right-0 mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg z-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Proficiency Breakdown</span>
+                    <button
+                      onClick={() => setShowBreakdown(false)}
+                      className="text-[10px] text-slate-400 hover:text-slate-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <ProficiencyBreakdown dimensions={dimensionData} view="bars" compact />
+                </div>
+              )}
             </div>
           )}
           {/* Take Assessment button */}
@@ -1020,16 +1125,8 @@ export default function StudyPage({
         )}
 
         {messages.map((msg, idx) => {
-          // Skip rendering if this message is a duplicate MCQ that's also showing as an interactive card
-          if (
-            msg.role === "assistant" &&
-            !msg.isStreaming &&
-            activeMCQ &&
-            msg.content.includes("(A)") &&
-            msg.content.includes("(B)") &&
-            msg.content.includes("(C)") &&
-            idx === messages.length - 1
-          ) {
+          // Skip rendering messages tagged as MCQ/FRQ source content (shown as interactive cards instead)
+          if (msg.type === "mcq_source" || msg.type === "system") {
             return null;
           }
           return (
@@ -1093,6 +1190,49 @@ export default function StudyPage({
                   setActiveIntroContent(null);
                 }}
               />
+            </div>
+          </div>
+        )}
+
+        {/* Assessment Resume Dialog */}
+        {showResumeDialog && savedSession && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <GraduationCap className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 text-slate-800 dark:text-slate-200">
+              <p className="text-sm font-medium mb-2">Resume Assessment?</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                You have an incomplete assessment — Q{savedSession.index + 1}/{savedSession.questions.length}, score: {savedSession.score.correct}/{savedSession.score.total}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setAssessmentMode(true);
+                    setAssessmentQuestions(savedSession.questions);
+                    setAssessmentIndex(savedSession.index);
+                    setAssessmentScore(savedSession.score);
+                    setSelectedAnswer(null);
+                    setShowMCQExplanation(false);
+                    setActiveMCQ(null);
+                    setShowResumeDialog(false);
+                    setSavedSession(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600 transition-colors"
+                >
+                  Resume
+                </button>
+                <button
+                  onClick={() => {
+                    if (topicId) clearAssessmentSession(courseId, topicId);
+                    setShowResumeDialog(false);
+                    setSavedSession(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-600 border border-slate-200 dark:border-slate-700 transition-colors"
+                >
+                  Start Fresh
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1198,10 +1338,20 @@ export default function StudyPage({
                             if (!selectedAnswer) return;
                             setShowMCQExplanation(true);
                             const isCorrect = selectedAnswer === q.correct;
-                            setAssessmentScore(prev => ({
-                              correct: prev.correct + (isCorrect ? 1 : 0),
-                              total: prev.total + 1,
-                            }));
+                            const newScore = {
+                              correct: assessmentScore.correct + (isCorrect ? 1 : 0),
+                              total: assessmentScore.total + 1,
+                            };
+                            setAssessmentScore(newScore);
+                            // Save session to localStorage for resume
+                            if (topicId) {
+                              saveAssessmentSession(courseId, topicId, {
+                                questions: assessmentQuestions,
+                                index: assessmentIndex,
+                                score: newScore,
+                                timestamp: Date.now(),
+                              });
+                            }
                             // Submit to backend
                             if (topicId && user) {
                               const token = localStorage.getItem("deeptutor_token");
@@ -1215,6 +1365,7 @@ export default function StudyPage({
                                   correct_answer: q.correct,
                                   is_correct: isCorrect,
                                   explanation: q.explanation,
+                                  question_category: q.category || topic?.title || null,
                                 }),
                               })
                                 .then(res => res.json())
@@ -1241,8 +1392,18 @@ export default function StudyPage({
                               setAssessmentIndex(nextIdx);
                               setSelectedAnswer(null);
                               setShowMCQExplanation(false);
+                              // Save progress for resume
+                              if (topicId) {
+                                saveAssessmentSession(courseId, topicId, {
+                                  questions: assessmentQuestions,
+                                  index: nextIdx,
+                                  score: assessmentScore,
+                                  timestamp: Date.now(),
+                                });
+                              }
                             } else {
-                              // Assessment complete — show results
+                              // Assessment complete — clear saved session and show results
+                              if (topicId) clearAssessmentSession(courseId, topicId);
                               const score = assessmentScore;
                               const pct = Math.round((score.correct / score.total) * 100);
                               const emoji = pct >= 80 ? "🎉" : pct >= 60 ? "👍" : "📚";
@@ -1268,6 +1429,7 @@ export default function StudyPage({
                       )}
                       <button
                         onClick={() => {
+                          if (topicId) clearAssessmentSession(courseId, topicId);
                           setAssessmentMode(false);
                           setAssessmentQuestions([]);
                           setSelectedAnswer(null);
@@ -1276,6 +1438,18 @@ export default function StudyPage({
                         className="px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         Exit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (topicId) clearAssessmentSession(courseId, topicId);
+                          setAssessmentIndex(0);
+                          setAssessmentScore({ correct: 0, total: 0 });
+                          setSelectedAnswer(null);
+                          setShowMCQExplanation(false);
+                        }}
+                        className="px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        Reset
                       </button>
                     </div>
                   </>

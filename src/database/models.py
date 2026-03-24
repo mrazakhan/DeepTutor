@@ -163,6 +163,27 @@ class AssessmentAnswer(Base):
     correct_answer = Column(Text, nullable=False)
     is_correct = Column(Boolean, nullable=False)
     explanation = Column(Text)
+    question_category = Column(String(100), nullable=True)  # "Methods", "ArrayList", "2D Array", etc.
     created_at = Column(DateTime, default=utcnow)
 
     assessment = relationship("TopicAssessment", back_populates="answers")
+
+
+# Minimum questions required before claiming mastery of a dimension
+MIN_QUESTIONS_FOR_MASTERY = 5
+
+
+class ProficiencyDimension(Base):
+    """Per-dimension proficiency tracking (question type + AP category)."""
+
+    __tablename__ = "proficiency_dimensions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    topic_id = Column(String, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
+    dimension_type = Column(String(30), nullable=False)  # "question_type" | "category"
+    dimension_value = Column(String(100), nullable=False)  # "mcq"|"frq"|"Methods"|"ArrayList" etc.
+    correct = Column(Integer, default=0)
+    total = Column(Integer, default=0)
+    proficiency = Column(Integer, default=0)  # 0-100
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
