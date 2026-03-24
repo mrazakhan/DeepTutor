@@ -91,6 +91,7 @@ def _upsert_dimension(db, user_id: str, topic_id: str, dim_type: str, dim_value:
         dim = ProficiencyDimension(
             user_id=user_id, topic_id=topic_id,
             dimension_type=dim_type, dimension_value=dim_value,
+            correct=0, total=0, proficiency=0,
         )
         db.add(dim)
     dim.total += 1
