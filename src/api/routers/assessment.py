@@ -139,11 +139,6 @@ async def submit_answer(
         assessment.proficiency = _recalculate_proficiency(assessment)
         assessment.last_assessed_at = datetime.now(timezone.utc)
 
-        # Update per-dimension proficiency
-        _upsert_dimension(db, user_id, topic_id, "question_type", body.question_type, body.is_correct)
-        if body.question_category:
-            _upsert_dimension(db, user_id, topic_id, "category", body.question_category, body.is_correct)
-
         db.commit()
 
         return {
