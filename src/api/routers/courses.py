@@ -376,7 +376,7 @@ _PROMPT_MISTAKES = (
 )
 
 # How many practice questions of each type to generate per topic
-_MCQ_COUNT = 3
+_MCQ_COUNT = 10
 _FRQ_COUNT = 2
 
 
@@ -502,6 +502,13 @@ async def preload_topic_content(
             "",
             "\n\nMake this question focus on a DIFFERENT concept or aspect than a typical question about this topic.",
             "\n\nMake this a TRICKY question that tests edge cases or subtle details that students often miss.",
+            "\n\nCreate a question that requires applying this concept to a real-world scenario.",
+            "\n\nWrite a question that tests understanding of WHY something works, not just WHAT happens.",
+            "\n\nMake this question involve reading and tracing through a short code snippet.",
+            "\n\nCreate a question where the student must identify what is WRONG with given code.",
+            "\n\nWrite a question that combines this topic with a closely related concept.",
+            "\n\nMake this an easy warm-up question testing basic recall of this topic.",
+            "\n\nCreate a challenging question that would appear at the end of the AP exam.",
         ]
         for i in range(_MCQ_COUNT):
             hint = variation_hints[i] if i < len(variation_hints) else variation_hints[-1]
