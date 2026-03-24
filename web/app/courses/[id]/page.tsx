@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
 
 interface TopicDetail {
   id: string;
@@ -69,12 +70,16 @@ export default function CourseDetailPage({
   const [loadingTopics, setLoadingTopics] = useState<Set<string>>(new Set());
   const [preloadingAll, setPreloadingAll] = useState(false);
   const [topicProgress, setTopicProgress] = useState<Record<string, { proficiency: number; total_questions: number; correct_answers: number }>>({});
+  const [courseDimensions, setCourseDimensions] = useState<ProficiencyDimension[]>([]);
   const { user } = useAuth();
 
   useEffect(() => {
     fetchCourse();
     fetchContentStatus();
-    if (user) fetchProgress();
+    if (user) {
+      fetchProgress();
+      fetchCourseDimensions();
+    }
   }, [id, user]);
 
   async function fetchCourse() {
@@ -118,6 +123,30 @@ export default function CourseDetailPage({
       }
     } catch (err) {
       console.error("Failed to fetch progress:", err);
+    }
+  }
+
+  async function fetchCourseDimensions() {
+    try {
+      const token = localStorage.getItem("deeptutor_token");
+      const res = await fetch(apiUrl(`/api/v1/courses/${id}/progress/dimensions`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const dims: ProficiencyDimension[] = [];
+        for (const [value, info] of Object.entries(data.question_type || {})) {
+          const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
+          dims.push({ label: value === "mcq" ? "MCQ Accuracy" : "FRQ Competency", ...d });
+        }
+        for (const [value, info] of Object.entries(data.category || {})) {
+          const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
+          dims.push({ label: value, ...d });
+        }
+        setCourseDimensions(dims);
+      }
+    } catch (err) {
+      console.error("Failed to fetch course dimensions:", err);
     }
   }
 
@@ -294,8 +323,9 @@ export default function CourseDetailPage({
           : 0;
         const totalCorrect = assessed.reduce((s, p) => s + p.correct_answers, 0);
         const totalQs = assessed.reduce((s, p) => s + p.total_questions, 0);
-        const mastered = assessed.filter(p => p.proficiency >= 80).length;
-        const developing = assessed.filter(p => p.proficiency >= 50 && p.proficiency < 80).length;
+        const MIN_FOR_MASTERY = 5;
+        const mastered = assessed.filter(p => p.proficiency >= 80 && p.total_questions >= MIN_FOR_MASTERY).length;
+        const developing = assessed.filter(p => (p.proficiency >= 50 && p.proficiency < 80) || (p.proficiency >= 80 && p.total_questions < MIN_FOR_MASTERY)).length;
         const needsWork = assessed.filter(p => p.proficiency < 50).length;
         return (
           <div className="mb-8 p-5 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border border-blue-100 dark:border-blue-900/50">
@@ -317,11 +347,23 @@ export default function CourseDetailPage({
             </div>
             <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
               <span>{totalCorrect}/{totalQs} questions correct</span>
-              <span className="text-emerald-600 dark:text-emerald-400">✓ {mastered} mastered</span>
-              <span className="text-amber-600 dark:text-amber-400">◐ {developing} developing</span>
+              <span className="text-emerald-600 dark:text-emerald-400">◉ {mastered} mastered</span>
+              <span className="text-amber-600 dark:text-amber-400">◉ {developing} developing</span>
               {needsWork > 0 && <span className="text-red-600 dark:text-red-400">✗ {needsWork} needs work</span>}
               <span className="text-slate-400">{totalTopics - assessed.length} not assessed</span>
             </div>
+            {/* Dimensional proficiency breakdown */}
+            {courseDimensions.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-blue-100 dark:border-blue-900/50">
+                <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3">Skill Breakdown</h3>
+                <div className={courseDimensions.length >= 3 ? "grid grid-cols-2 gap-4" : ""}>
+                  {courseDimensions.length >= 3 && (
+                    <ProficiencyBreakdown dimensions={courseDimensions} view="radar" />
+                  )}
+                  <ProficiencyBreakdown dimensions={courseDimensions} view="bars" compact />
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
