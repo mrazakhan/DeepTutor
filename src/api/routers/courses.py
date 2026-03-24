@@ -499,23 +499,37 @@ async def preload_topic_content(
                 mcq_list.append({"raw_text": raw})
         content_dict["practice_mcq"] = mcq_list
 
-        # 3. Generate multiple FRQs
-        frq_list = []
-        frq_hints = [
-            "",
-            "\n\nMake this a DIFFERENT style of FRQ focusing on a different aspect of the topic.",
-        ]
-        for i in range(_FRQ_COUNT):
-            hint = frq_hints[i] if i < len(frq_hints) else frq_hints[-1]
-            logger.info(f"Generating FRQ {i+1}/{_FRQ_COUNT} for {topic.topic_number}...")
-            raw = await _generate(_PROMPT_FRQ.format(**fmt, variation_hint=hint))
-            parsed = _parse_json_response(raw)
-            if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
-                frq_list.append(parsed)
-            else:
-                logger.warning(f"FRQ {i+1} for {topic.title} not valid JSON, storing as text")
-                frq_list.append({"raw_text": raw})
-        content_dict["practice_frq"] = frq_list
+        # 3. Generate multiple FRQs (only if the course exam has FRQ sections)
+        has_frq_section = False
+        if course.exam_format:
+            try:
+                ef = json.loads(course.exam_format) if isinstance(course.exam_format, str) else course.exam_format
+                has_frq_section = any(
+                    "free response" in s.get("name", "").lower() or "frq" in s.get("name", "").lower()
+                    for s in ef.get("sections", [])
+                )
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if has_frq_section:
+            frq_list = []
+            frq_hints = [
+                "",
+                "\n\nMake this a DIFFERENT style of FRQ focusing on a different aspect of the topic.",
+            ]
+            for i in range(_FRQ_COUNT):
+                hint = frq_hints[i] if i < len(frq_hints) else frq_hints[-1]
+                logger.info(f"Generating FRQ {i+1}/{_FRQ_COUNT} for {topic.topic_number}...")
+                raw = await _generate(_PROMPT_FRQ.format(**fmt, variation_hint=hint))
+                parsed = _parse_json_response(raw)
+                if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
+                    frq_list.append(parsed)
+                else:
+                    logger.warning(f"FRQ {i+1} for {topic.title} not valid JSON, storing as text")
+                    frq_list.append({"raw_text": raw})
+            content_dict["practice_frq"] = frq_list
+        else:
+            logger.info(f"Skipping FRQ generation for {course.name} (no FRQ exam section)")
 
         # 4. Generate exam info
         logger.info(f"Generating 'exam' for {topic.topic_number}...")
