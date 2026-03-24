@@ -396,12 +396,24 @@ async def preload_topic_content(
         # Check if already generated
         existing = db.query(TopicContent).filter(TopicContent.topic_id == topic_id).first()
         if existing:
-            return {
-                "topic_id": existing.topic_id,
-                "content": json.loads(existing.content),
-                "generated_by": existing.generated_by,
-                "already_existed": True,
-            }
+            existing_content = json.loads(existing.content)
+            existing_mcqs = existing_content.get("practice_mcq", [])
+            # If pool is already full, return as-is
+            if len(existing_mcqs) >= _MCQ_COUNT:
+                return {
+                    "topic_id": existing.topic_id,
+                    "content": existing_content,
+                    "generated_by": existing.generated_by,
+                    "already_existed": True,
+                }
+            # Otherwise, fall through to extend the MCQ pool below
+            extend_existing = existing
+            extend_content = existing_content
+            extend_mcq_start = len(existing_mcqs)
+        else:
+            extend_existing = None
+            extend_content = None
+            extend_mcq_start = 0
 
         course = topic.unit.course
         unit = topic.unit
@@ -490,14 +502,19 @@ async def preload_topic_content(
 
             return None
 
-        content_dict: dict = {}
+        # If extending existing content, only generate the missing MCQs
+        if extend_existing:
+            content_dict = extend_content
+            mcq_list = content_dict.get("practice_mcq", [])
+            logger.info(f"Extending MCQ pool for {topic.title}: {len(mcq_list)} -> {_MCQ_COUNT}")
+        else:
+            content_dict = {}
+            # 1. Generate intro
+            logger.info(f"Generating 'intro' for {topic.topic_number} {topic.title}...")
+            content_dict["intro"] = await _generate(_PROMPT_INTRO.format(**fmt))
+            mcq_list = []
 
-        # 1. Generate intro
-        logger.info(f"Generating 'intro' for {topic.topic_number} {topic.title}...")
-        content_dict["intro"] = await _generate(_PROMPT_INTRO.format(**fmt))
-
-        # 2. Generate multiple MCQs
-        mcq_list = []
+        # 2. Generate MCQs (starting from where we left off)
         variation_hints = [
             "",
             "\n\nMake this question focus on a DIFFERENT concept or aspect than a typical question about this topic.",
@@ -510,7 +527,7 @@ async def preload_topic_content(
             "\n\nMake this an easy warm-up question testing basic recall of this topic.",
             "\n\nCreate a challenging question that would appear at the end of the AP exam.",
         ]
-        for i in range(_MCQ_COUNT):
+        for i in range(extend_mcq_start, _MCQ_COUNT):
             hint = variation_hints[i] if i < len(variation_hints) else variation_hints[-1]
             logger.info(f"Generating MCQ {i+1}/{_MCQ_COUNT} for {topic.topic_number}...")
             raw = await _generate(_PROMPT_MCQ.format(**fmt, variation_hint=hint))
@@ -522,68 +539,82 @@ async def preload_topic_content(
                 mcq_list.append({"raw_text": raw})
         content_dict["practice_mcq"] = mcq_list
 
-        # 3. Generate multiple FRQs (only if the course exam has FRQ sections)
-        has_frq_section = False
-        if course.exam_format:
-            try:
-                ef = json.loads(course.exam_format) if isinstance(course.exam_format, str) else course.exam_format
-                has_frq_section = any(
-                    "free response" in s.get("name", "").lower() or "frq" in s.get("name", "").lower()
-                    for s in ef.get("sections", [])
-                )
-            except (json.JSONDecodeError, TypeError):
-                pass
+        # Skip non-MCQ generation when extending existing content
+        if not extend_existing:
+            # 3. Generate multiple FRQs (only if the course exam has FRQ sections)
+            has_frq_section = False
+            if course.exam_format:
+                try:
+                    ef = json.loads(course.exam_format) if isinstance(course.exam_format, str) else course.exam_format
+                    has_frq_section = any(
+                        "free response" in s.get("name", "").lower() or "frq" in s.get("name", "").lower()
+                        for s in ef.get("sections", [])
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    pass
 
-        if has_frq_section:
-            frq_list = []
-            frq_hints = [
-                "",
-                "\n\nMake this a DIFFERENT style of FRQ focusing on a different aspect of the topic.",
-            ]
-            for i in range(_FRQ_COUNT):
-                hint = frq_hints[i] if i < len(frq_hints) else frq_hints[-1]
-                logger.info(f"Generating FRQ {i+1}/{_FRQ_COUNT} for {topic.topic_number}...")
-                raw = await _generate(_PROMPT_FRQ.format(**fmt, variation_hint=hint))
-                parsed = _parse_json_response(raw)
-                if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
-                    frq_list.append(parsed)
-                else:
-                    logger.warning(f"FRQ {i+1} for {topic.title} not valid JSON, storing as text")
-                    frq_list.append({"raw_text": raw})
-            content_dict["practice_frq"] = frq_list
-        else:
-            logger.info(f"Skipping FRQ generation for {course.name} (no FRQ exam section)")
+            if has_frq_section:
+                frq_list = []
+                frq_hints = [
+                    "",
+                    "\n\nMake this a DIFFERENT style of FRQ focusing on a different aspect of the topic.",
+                ]
+                for i in range(_FRQ_COUNT):
+                    hint = frq_hints[i] if i < len(frq_hints) else frq_hints[-1]
+                    logger.info(f"Generating FRQ {i+1}/{_FRQ_COUNT} for {topic.topic_number}...")
+                    raw = await _generate(_PROMPT_FRQ.format(**fmt, variation_hint=hint))
+                    parsed = _parse_json_response(raw)
+                    if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
+                        frq_list.append(parsed)
+                    else:
+                        logger.warning(f"FRQ {i+1} for {topic.title} not valid JSON, storing as text")
+                        frq_list.append({"raw_text": raw})
+                content_dict["practice_frq"] = frq_list
+            else:
+                logger.info(f"Skipping FRQ generation for {course.name} (no FRQ exam section)")
 
-        # 4. Generate exam info
-        logger.info(f"Generating 'exam' for {topic.topic_number}...")
-        content_dict["exam"] = await _generate(_PROMPT_EXAM.format(**fmt))
+            # 4. Generate exam info
+            logger.info(f"Generating 'exam' for {topic.topic_number}...")
+            content_dict["exam"] = await _generate(_PROMPT_EXAM.format(**fmt))
 
-        # 5. Generate common mistakes
-        logger.info(f"Generating 'mistakes' for {topic.topic_number}...")
-        content_dict["mistakes"] = await _generate(_PROMPT_MISTAKES.format(**fmt))
+            # 5. Generate common mistakes
+            logger.info(f"Generating 'mistakes' for {topic.topic_number}...")
+            content_dict["mistakes"] = await _generate(_PROMPT_MISTAKES.format(**fmt))
 
-        if not content_dict.get("intro"):
-            raise HTTPException(status_code=500, detail="Failed to generate content")
+            if not content_dict.get("intro"):
+                raise HTTPException(status_code=500, detail="Failed to generate content")
 
-        # Save to DB as JSON
+        # Save to DB
         generated_by = body.generated_by if body else None
-        tc = TopicContent(
-            topic_id=topic_id,
-            content=json.dumps(content_dict),
-            generated_by=generated_by,
-        )
-        db.add(tc)
-        db.commit()
-        db.refresh(tc)
-
-        logger.info(f"Preloaded all content for topic {topic_id} ({topic.title})")
-
-        return {
-            "topic_id": tc.topic_id,
-            "content": content_dict,
-            "generated_by": tc.generated_by,
-            "already_existed": False,
-        }
+        if extend_existing:
+            # Update existing record with extended MCQ pool
+            extend_existing.content = json.dumps(content_dict)
+            db.commit()
+            db.refresh(extend_existing)
+            logger.info(f"Extended MCQ pool for topic {topic_id} ({topic.title}): now {len(content_dict['practice_mcq'])} MCQs")
+            return {
+                "topic_id": extend_existing.topic_id,
+                "content": content_dict,
+                "generated_by": extend_existing.generated_by,
+                "already_existed": True,
+                "extended_mcqs": True,
+            }
+        else:
+            tc = TopicContent(
+                topic_id=topic_id,
+                content=json.dumps(content_dict),
+                generated_by=generated_by,
+            )
+            db.add(tc)
+            db.commit()
+            db.refresh(tc)
+            logger.info(f"Preloaded all content for topic {topic_id} ({topic.title})")
+            return {
+                "topic_id": tc.topic_id,
+                "content": content_dict,
+                "generated_by": tc.generated_by,
+                "already_existed": False,
+            }
     finally:
         db.close()
 
