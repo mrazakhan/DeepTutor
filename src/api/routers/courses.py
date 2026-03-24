@@ -225,9 +225,25 @@ async def get_topic_content(course_id: str, topic_id: str):
         if not tc:
             return {"topic_id": topic_id, "content": None}
 
+        content = json.loads(tc.content)
+
+        # Strip FRQ content for courses without FRQ exam sections
+        course = topic.unit.course
+        if content.get("practice_frq") and course.exam_format:
+            try:
+                ef = json.loads(course.exam_format) if isinstance(course.exam_format, str) else course.exam_format
+                has_frq = any(
+                    "free response" in s.get("name", "").lower() or "frq" in s.get("name", "").lower()
+                    for s in ef.get("sections", [])
+                )
+                if not has_frq:
+                    del content["practice_frq"]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         return {
             "topic_id": tc.topic_id,
-            "content": json.loads(tc.content),
+            "content": content,
             "generated_by": tc.generated_by,
             "created_at": tc.created_at.isoformat() if tc.created_at else None,
         }
