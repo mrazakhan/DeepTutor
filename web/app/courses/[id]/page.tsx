@@ -135,14 +135,20 @@ export default function CourseDetailPage({
       if (res.ok) {
         const data = await res.json();
         const dims: ProficiencyDimension[] = [];
+        // Show MCQ/FRQ accuracy
         for (const [value, info] of Object.entries(data.question_type || {})) {
           const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
           dims.push({ label: value === "mcq" ? "MCQ Accuracy" : "FRQ Competency", ...d });
         }
-        for (const [value, info] of Object.entries(data.category || {})) {
-          const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
-          dims.push({ label: value, ...d });
-        }
+        // Show only the 3 weakest categories (areas needing most work)
+        const categories = Object.entries(data.category || {})
+          .map(([value, info]) => {
+            const d = info as { correct: number; total: number; proficiency: number; mastered: boolean };
+            return { label: value, ...d };
+          })
+          .sort((a, b) => a.proficiency - b.proficiency)
+          .slice(0, 3);
+        dims.push(...categories);
         setCourseDimensions(dims);
       }
     } catch (err) {
@@ -355,7 +361,7 @@ export default function CourseDetailPage({
             {/* Dimensional proficiency breakdown */}
             {courseDimensions.length > 0 && (
               <div className="mt-4 pt-4 border-t border-blue-100 dark:border-blue-900/50">
-                <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3">Skill Breakdown</h3>
+                <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3">Skill Breakdown — weakest areas</h3>
                 <div className={courseDimensions.length >= 3 ? "grid grid-cols-2 gap-4" : ""}>
                   {courseDimensions.length >= 3 && (
                     <ProficiencyBreakdown dimensions={courseDimensions} view="radar" />
