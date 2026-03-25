@@ -107,6 +107,8 @@ class TopicContent(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     topic_id = Column(String, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False, unique=True)
     content = Column(Text, nullable=False)  # JSON: {intro, practice_mcq, practice_frq, exam, mistakes}
+    golden_solutions = Column(Text, nullable=True)  # JSON: [{frq_index, solution_code, explanation}]
+    extra_frqs = Column(Text, nullable=True)  # JSON: [{question, frq_type, sample_solution, rubric, explanation}]
     generated_by = Column(String(100))  # Username who triggered generation
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

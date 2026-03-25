@@ -79,6 +79,12 @@ interface FRQuestion {
   raw_text?: string;
 }
 
+interface GoldenSolution {
+  frq_index: number;
+  solution_code: string;
+  explanation: string;
+}
+
 interface PreloadedContent {
   intro?: string;
   practice?: string; // legacy single practice (backward compat)
@@ -232,6 +238,10 @@ export default function StudyPage({
   const [frqIndex, setFrqIndex] = useState(0);
   const [frqAnswer, setFrqAnswer] = useState("");
   const [showFRQSolution, setShowFRQSolution] = useState(false);
+  // Golden solution & extra FRQ state
+  const [goldenSolutions, setGoldenSolutions] = useState<GoldenSolution[] | null>(null);
+  const [extraFrqs, setExtraFrqs] = useState<FRQuestion[] | null>(null);
+  const [showGoldenSolution, setShowGoldenSolution] = useState(false);
   // Inline code editor for non-preloaded FRQ responses
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [inlineEditorCode, setInlineEditorCode] = useState("");
@@ -331,6 +341,12 @@ export default function StudyPage({
           const data = await res.json();
           if (data.content) {
             setPreloadedContent(data.content);
+          }
+          if (data.golden_solutions) {
+            setGoldenSolutions(data.golden_solutions);
+          }
+          if (data.extra_frqs) {
+            setExtraFrqs(data.extra_frqs);
           }
         }
       } catch (err) {
@@ -524,12 +540,18 @@ export default function StudyPage({
         frqs = frqs.map(tryRecoverFRQ);
         preloadedContent.practice_frq = frqs;
       }
-      if (frqs && frqs.length > 0 && !frqs[0].raw_text) {
+      // Merge extra FRQs (appended after preloaded ones)
+      const mergedFrqs = [...(frqs || [])];
+      if (extraFrqs && extraFrqs.length > 0) {
+        mergedFrqs.push(...extraFrqs.map(tryRecoverFRQ));
+      }
+      if (mergedFrqs.length > 0 && !mergedFrqs[0].raw_text) {
         setMessages((prev) => [...prev, { role: "user", content: label }]);
         setFrqIndex(0);
-        setActiveFRQ(frqs[0]);
+        setActiveFRQ(mergedFrqs[0]);
         setFrqAnswer("");
         setShowFRQSolution(false);
+        setShowGoldenSolution(false);
         return;
       }
       // No preloaded FRQ — send to LLM but show code editor after response
@@ -661,14 +683,19 @@ export default function StudyPage({
   }
 
   function handleNextFRQ() {
-    const frqs = preloadedContent?.practice_frq;
-    if (!frqs) return;
+    // Merge preloaded + extra FRQs
+    const frqs = [
+      ...(preloadedContent?.practice_frq || []),
+      ...(extraFrqs || []),
+    ];
+    if (!frqs.length) return;
     const nextIdx = frqIndex + 1;
     if (nextIdx < frqs.length && !frqs[nextIdx].raw_text) {
       setFrqIndex(nextIdx);
       setActiveFRQ(frqs[nextIdx]);
       setFrqAnswer("");
       setShowFRQSolution(false);
+      setShowGoldenSolution(false);
       setMessages((prev) => [
         ...prev,
         { role: "user", content: `Practice FRQ ${nextIdx + 1} of ${frqs.length}`, type: "system" as const },
@@ -1566,7 +1593,9 @@ export default function StudyPage({
         )}
 
         {/* FRQ question shown in chat (without editor — editor is on the right panel) */}
-        {activeFRQ && !showFRQSolution && (
+        {activeFRQ && !showFRQSolution && (() => {
+          const totalFrqs = (preloadedContent?.practice_frq?.length || 0) + (extraFrqs?.length || 0);
+          return (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot className="w-4 h-4 text-blue-500" />
@@ -1574,7 +1603,7 @@ export default function StudyPage({
             <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-medium text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
-                  FRQ {frqIndex + 1} of {preloadedContent?.practice_frq?.length || 1}
+                  FRQ {frqIndex + 1} of {totalFrqs || 1}
                   {activeFRQ.frq_type && ` • ${activeFRQ.frq_type}`}
                 </span>
               </div>
@@ -1583,24 +1612,77 @@ export default function StudyPage({
                   {processLatexContent(activeFRQ.question)}
                 </ReactMarkdown>
               </div>
+              {/* Golden solution toggle */}
+              {goldenSolutions?.find(g => g.frq_index === frqIndex) && (
+                <div className="mt-3 border-t border-slate-200 dark:border-slate-700 pt-3">
+                  <button
+                    onClick={() => setShowGoldenSolution(!showGoldenSolution)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors flex items-center gap-1.5"
+                  >
+                    {showGoldenSolution ? "▾ Hide Solution" : "▸ Show Solution"}
+                  </button>
+                  {showGoldenSolution && (() => {
+                    const gs = goldenSolutions.find(g => g.frq_index === frqIndex)!;
+                    return (
+                      <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                            {"```java\n" + gs.solution_code + "\n```\n\n**Explanation:**\n" + gs.explanation}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
               <p className="text-xs text-slate-400 mt-3 italic">
                 ← Write your solution in the editor panel on the right
               </p>
             </div>
           </div>
-        )}
+          );
+        })()}
 
-        {/* "Next FRQ" button after solution */}
-        {showFRQSolution && preloadedContent?.practice_frq && frqIndex < (preloadedContent.practice_frq.length - 1) && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleNextFRQ}
-              className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
-            >
-              Next FRQ →
-            </button>
-          </div>
-        )}
+        {/* "Next FRQ" button after solution + golden solution toggle */}
+        {showFRQSolution && (() => {
+          const totalFrqs = (preloadedContent?.practice_frq?.length || 0) + (extraFrqs?.length || 0);
+          const hasNext = frqIndex < totalFrqs - 1;
+          return (
+            <div className="flex flex-col items-center gap-2">
+              {/* Golden solution toggle in post-submit view */}
+              {goldenSolutions?.find(g => g.frq_index === frqIndex) && (
+                <div className="w-full max-w-2xl">
+                  <button
+                    onClick={() => setShowGoldenSolution(!showGoldenSolution)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors flex items-center gap-1.5"
+                  >
+                    {showGoldenSolution ? "▾ Hide Golden Solution" : "▸ Show Golden Solution"}
+                  </button>
+                  {showGoldenSolution && (() => {
+                    const gs = goldenSolutions.find(g => g.frq_index === frqIndex)!;
+                    return (
+                      <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                            {"```java\n" + gs.solution_code + "\n```\n\n**Explanation:**\n" + gs.explanation}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              {hasNext && (
+                <button
+                  onClick={handleNextFRQ}
+                  className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
+                >
+                  Next FRQ →
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Hint for inline editor */}
         {showInlineEditor && !isLoading && (
