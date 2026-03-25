@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -57,8 +58,7 @@ class Unit(Base):
     estimated_hours = Column(Float)
 
     course = relationship("Course", back_populates="units")
-    topics = relationship("Topic", back_populates="unit", cascade="all, delete-orphan",
-                          order_by="Topic.topic_number")
+    topics = relationship("Topic", back_populates="unit", cascade="all, delete-orphan")
 
 
 class Topic(Base):
@@ -127,6 +127,22 @@ class User(Base):
     created_at = Column(DateTime, default=utcnow)
 
     assessments = relationship("TopicAssessment", back_populates="user", cascade="all, delete-orphan")
+    favorite_courses = relationship("UserCourseFavorite", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserCourseFavorite(Base):
+    """Tracks which courses a user has starred/favorited."""
+
+    __tablename__ = "user_course_favorites"
+    __table_args__ = (UniqueConstraint("user_id", "course_id", name="uq_user_course_fav"),)
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(String, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+    user = relationship("User", back_populates="favorite_courses")
+    course = relationship("Course")
 
 
 class TopicAssessment(Base):

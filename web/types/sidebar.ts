@@ -4,8 +4,8 @@
  * Sidebar navigation order configuration
  */
 export interface SidebarNavOrder {
-  start: string[]; // Array of href paths for START group
-  learnResearch: string[]; // Array of href paths for LEARN & RESEARCH group
+  start: string[]; // Array of href paths for navigation items
+  learnResearch: string[]; // Kept for backwards compatibility (unused)
 }
 
 /**
@@ -25,13 +25,6 @@ export const DEFAULT_SIDEBAR_DESCRIPTION = "DeepTutor++";
  * Default navigation order
  */
 export const DEFAULT_NAV_ORDER: SidebarNavOrder = {
-  start: ["/", "/courses", "/history", "/knowledge", "/notebook"],
-  learnResearch: [
-    "/question",
-    "/solver",
-    "/guide",
-    "/ideagen",
-    "/research",
-    "/co_writer",
-  ],
+  start: ["/", "/courses"],
+  learnResearch: [],
 };

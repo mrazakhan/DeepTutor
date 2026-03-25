@@ -8,7 +8,13 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFi
 from pydantic import BaseModel
 
 from src.database.engine import get_db, init_db
-from src.database.models import Course, Topic, TopicContent, Unit
+from src.database.models import Course, Topic, TopicContent, Unit, UserCourseFavorite
+
+
+def _topic_sort_key(t):
+    """Sort '4.2' before '4.10' by parsing parts as integers."""
+    parts = t.topic_number.split(".")
+    return tuple(int(p) for p in parts)
 from src.logging import get_logger
 
 logger = get_logger("CoursesAPI")
@@ -102,7 +108,7 @@ async def get_course(course_id: str):
                             "title": t.title,
                             "description": t.description,
                         }
-                        for t in u.topics
+                        for t in sorted(u.topics, key=_topic_sort_key)
                     ],
                 }
                 for u in course.units
@@ -145,7 +151,7 @@ async def get_unit(course_id: str, unit_id: str):
                         for lo in t.learning_objectives
                     ],
                 }
-                for t in unit.topics
+                for t in sorted(unit.topics, key=_topic_sort_key)
             ],
         }
     finally:
@@ -627,6 +633,61 @@ def _subject_label(area: str) -> str:
         "science": "Science",
     }
     return labels.get(area, area.replace("_", " ").title())
+
+
+# ──────────────────────────────────────────────────────
+# Course Favorites
+# ──────────────────────────────────────────────────────
+
+@router.get("/favorites")
+async def list_favorites(request: Request):
+    """List course IDs that the current user has favorited."""
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    db = get_db()
+    try:
+        favs = (
+            db.query(UserCourseFavorite.course_id)
+            .filter(UserCourseFavorite.user_id == user["user_id"])
+            .all()
+        )
+        return [f[0] for f in favs]
+    finally:
+        db.close()
+
+
+@router.post("/{course_id}/favorite")
+async def toggle_favorite(course_id: str, request: Request):
+    """Toggle favorite status for a course. Returns {favorited: bool}."""
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    db = get_db()
+    try:
+        existing = (
+            db.query(UserCourseFavorite)
+            .filter(
+                UserCourseFavorite.user_id == user["user_id"],
+                UserCourseFavorite.course_id == course_id,
+            )
+            .first()
+        )
+        if existing:
+            db.delete(existing)
+            db.commit()
+            return {"favorited": False}
+        else:
+            fav = UserCourseFavorite(user_id=user["user_id"], course_id=course_id)
+            db.add(fav)
+            db.commit()
+            return {"favorited": True}
+    finally:
+        db.close()
 
 
 # ──────────────────────────────────────────────────────
