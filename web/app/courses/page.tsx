@@ -54,6 +54,7 @@ export default function CourseCatalogPage() {
   const { user } = useAuth();
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [coursesWithProgress, setCoursesWithProgress] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -62,17 +63,36 @@ export default function CourseCatalogPage() {
     fetchCourses();
   }, []);
 
-  // Fetch favorites when user is available
+  // Fetch favorites and progress when user is available
   useEffect(() => {
     if (!user) return;
     const token = localStorage.getItem("deeptutor_token");
-    fetch(apiUrl("/api/v1/courses/favorites"), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // Fetch favorites
+    fetch(apiUrl("/api/v1/courses/favorites"), { headers })
       .then((res) => (res.ok ? res.json() : []))
       .then((ids: string[]) => setFavorites(new Set(ids)))
       .catch(() => {});
-  }, [user]);
+
+    // Fetch progress for each course to detect which ones have been explored
+    if (courses.length > 0) {
+      Promise.all(
+        courses.map(async (course) => {
+          try {
+            const res = await fetch(apiUrl(`/api/v1/courses/${course.id}/progress`), { headers });
+            if (res.ok) {
+              const data = await res.json();
+              if (Object.keys(data).length > 0) return course.id;
+            }
+          } catch { /* skip */ }
+          return null;
+        })
+      ).then((ids) => {
+        setCoursesWithProgress(new Set(ids.filter(Boolean) as string[]));
+      });
+    }
+  }, [user, courses]);
 
   async function fetchCourses() {
     try {
@@ -214,6 +234,14 @@ export default function CourseCatalogPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {items.map((course) => {
                   const isFav = favorites.has(course.id);
+                  const hasProgress = coursesWithProgress.has(course.id);
+
+                  const starClass = isFav
+                    ? "fill-amber-400 text-amber-400"
+                    : hasProgress
+                    ? "fill-amber-200 text-amber-400 dark:fill-amber-400/30 dark:text-amber-400"
+                    : "text-slate-300 dark:text-slate-600 hover:text-amber-400";
+
                   return (
                     <div
                       key={course.id}
@@ -230,13 +258,7 @@ export default function CourseCatalogPage() {
                           className="absolute top-4 right-4 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors z-10"
                           title={isFav ? t("Remove from My Courses") : t("Add to My Courses")}
                         >
-                          <Star
-                            className={`w-4 h-4 transition-colors ${
-                              isFav
-                                ? "fill-amber-400 text-amber-400"
-                                : "text-slate-300 dark:text-slate-600 hover:text-amber-400"
-                            }`}
-                          />
+                          <Star className={`w-4 h-4 transition-colors ${starClass}`} />
                         </button>
                       )}
 

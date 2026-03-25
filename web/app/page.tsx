@@ -161,6 +161,14 @@ export default function HomePage() {
       ? Math.round((stats.assessed / course.topic_count) * 100)
       : 0;
     const isFav = favorites.has(course.id);
+    const hasProgress = stats.assessed > 0;
+
+    // Star states: hollow (no interaction), partial fill (has progress), full fill (starred)
+    const starClass = isFav
+      ? "fill-amber-400 text-amber-400"
+      : hasProgress
+      ? "fill-amber-200 text-amber-400 dark:fill-amber-400/30 dark:text-amber-400"
+      : "text-slate-300 dark:text-slate-600 hover:text-amber-400";
 
     return (
       <div
@@ -176,15 +184,9 @@ export default function HomePage() {
               toggleFavorite(course.id);
             }}
             className="absolute top-3 right-3 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors z-10"
-            title={isFav ? t("Remove from My Courses") : t("Add to My Courses")}
+            title={isFav ? t("Remove from My Courses") : hasProgress ? t("Add to My Courses (in progress)") : t("Add to My Courses")}
           >
-            <Star
-              className={`w-4 h-4 transition-colors ${
-                isFav
-                  ? "fill-amber-400 text-amber-400"
-                  : "text-slate-300 dark:text-slate-600 hover:text-amber-400"
-              }`}
-            />
+            <Star className={`w-4 h-4 transition-colors ${starClass}`} />
           </button>
         )}
 
