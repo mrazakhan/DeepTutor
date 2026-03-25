@@ -3,16 +3,21 @@
 All endpoints require admin role.
 """
 
+import json
 import secrets
 import time
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from sqlalchemy import func
 
 from src.database.engine import get_db
 from src.database.models import (
     AssessmentAnswer,
+    Course,
+    Topic,
     TopicAssessment,
+    TopicContent,
+    Unit,
     User,
     UserCourseFavorite,
 )
@@ -207,3 +212,97 @@ async def get_stats(request: Request):
         }
     finally:
         db.close()
+
+
+# ── Batch generation helpers ──────────────────────────────────────────
+
+
+def _get_course_topics_with_frqs(course_code: str):
+    """Get all topics for a course that have preloaded FRQ content."""
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.code == course_code).first()
+        if not course:
+            return None, []
+        topics = []
+        for unit in course.units:
+            for topic in unit.topics:
+                tc = db.query(TopicContent).filter(TopicContent.topic_id == topic.id).first()
+                if tc:
+                    content = json.loads(tc.content)
+                    if content.get("practice_frq"):
+                        topics.append({
+                            "course_id": course.id,
+                            "topic_id": topic.id,
+                            "topic_number": topic.topic_number,
+                            "title": topic.title,
+                            "has_golden": tc.golden_solutions is not None,
+                            "has_extra": tc.extra_frqs is not None,
+                        })
+        return course, topics
+    finally:
+        db.close()
+
+
+@router.post("/generate-golden-solutions")
+async def batch_golden_solutions(request: Request, course_code: str = "apcsa"):
+    """Batch-generate golden solutions for all topics in a course. Runs synchronously."""
+    _require_admin(request)
+
+    course, topics = _get_course_topics_with_frqs(course_code)
+    if not course:
+        raise HTTPException(status_code=404, detail=f"Course '{course_code}' not found")
+
+    pending = [t for t in topics if not t["has_golden"]]
+    if not pending:
+        return {"message": "All topics already have golden solutions", "total": len(topics), "generated": 0}
+
+    from src.api.routers.courses import generate_golden_solutions
+
+    results = []
+    for t in pending:
+        try:
+            r = await generate_golden_solutions(t["course_id"], t["topic_id"])
+            results.append({"topic": t["topic_number"], "title": t["title"], "status": "ok", "count": r["count"]})
+        except Exception as e:
+            results.append({"topic": t["topic_number"], "title": t["title"], "status": "error", "error": str(e)})
+
+    return {
+        "total_topics": len(topics),
+        "already_done": len(topics) - len(pending),
+        "generated": sum(1 for r in results if r["status"] == "ok"),
+        "errors": sum(1 for r in results if r["status"] == "error"),
+        "details": results,
+    }
+
+
+@router.post("/generate-extra-frqs")
+async def batch_extra_frqs(request: Request, course_code: str = "apcsa"):
+    """Batch-generate extra FRQ questions for all topics in a course."""
+    _require_admin(request)
+
+    course, topics = _get_course_topics_with_frqs(course_code)
+    if not course:
+        raise HTTPException(status_code=404, detail=f"Course '{course_code}' not found")
+
+    pending = [t for t in topics if not t["has_extra"]]
+    if not pending:
+        return {"message": "All topics already have extra FRQs", "total": len(topics), "generated": 0}
+
+    from src.api.routers.courses import generate_extra_frqs
+
+    results = []
+    for t in pending:
+        try:
+            r = await generate_extra_frqs(t["course_id"], t["topic_id"])
+            results.append({"topic": t["topic_number"], "title": t["title"], "status": "ok", "count": r["count"]})
+        except Exception as e:
+            results.append({"topic": t["topic_number"], "title": t["title"], "status": "error", "error": str(e)})
+
+    return {
+        "total_topics": len(topics),
+        "already_done": len(topics) - len(pending),
+        "generated": sum(1 for r in results if r["status"] == "ok"),
+        "errors": sum(1 for r in results if r["status"] == "error"),
+        "details": results,
+    }

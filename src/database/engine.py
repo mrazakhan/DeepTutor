@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.database.models import Base
@@ -36,6 +36,20 @@ def init_db():
     """Create all tables if they don't exist."""
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+
+    # Migrate existing databases: add new columns if missing
+    _migrate_columns = [
+        ("users", "last_login_at", "DATETIME"),
+        ("topic_content", "golden_solutions", "TEXT"),
+        ("topic_content", "extra_frqs", "TEXT"),
+    ]
+    with engine.connect() as conn:
+        for table, column, col_type in _migrate_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
 
 
 def get_db() -> Session:

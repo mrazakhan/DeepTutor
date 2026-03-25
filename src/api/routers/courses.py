@@ -250,6 +250,8 @@ async def get_topic_content(course_id: str, topic_id: str):
         return {
             "topic_id": tc.topic_id,
             "content": content,
+            "golden_solutions": json.loads(tc.golden_solutions) if tc.golden_solutions else None,
+            "extra_frqs": json.loads(tc.extra_frqs) if tc.extra_frqs else None,
             "generated_by": tc.generated_by,
             "created_at": tc.created_at.isoformat() if tc.created_at else None,
         }
@@ -386,6 +388,44 @@ _MCQ_COUNT = 10
 _FRQ_COUNT = 2
 
 
+def _parse_json_response(raw: str) -> dict | None:
+    """Try to parse a JSON response, with aggressive cleanup."""
+    import re
+
+    def _try_parse(s: str) -> dict | None:
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+    cleaned = raw.strip()
+
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        cleaned = cleaned.rsplit("```", 1)[0].strip()
+
+    result = _try_parse(cleaned)
+    if result:
+        return result
+
+    # Fallback: extract first JSON object via brace matching
+    first_brace = cleaned.find("{")
+    last_brace = cleaned.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = cleaned[first_brace : last_brace + 1]
+        result = _try_parse(candidate)
+        if result:
+            return result
+        # Try fixing trailing commas (common LLM error)
+        fixed = re.sub(r",\s*([}\]])", r"\1", candidate)
+        result = _try_parse(fixed)
+        if result:
+            return result
+
+    return None
+
+
 @router.post("/{course_id}/topics/{topic_id}/preload")
 async def preload_topic_content(
     course_id: str,
@@ -470,43 +510,6 @@ async def preload_topic_content(
                 stream=False,
             )
             return result.get("response", "")
-
-        def _parse_json_response(raw: str) -> dict | None:
-            """Try to parse a JSON response, with aggressive cleanup."""
-            import re
-
-            def _try_parse(s: str) -> dict | None:
-                try:
-                    return json.loads(s)
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    return None
-
-            cleaned = raw.strip()
-
-            # Strip markdown code fences (```json ... ``` or ``` ... ```)
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-                cleaned = cleaned.rsplit("```", 1)[0].strip()
-
-            result = _try_parse(cleaned)
-            if result:
-                return result
-
-            # Fallback: extract first JSON object via brace matching
-            first_brace = cleaned.find("{")
-            last_brace = cleaned.rfind("}")
-            if first_brace != -1 and last_brace > first_brace:
-                candidate = cleaned[first_brace : last_brace + 1]
-                result = _try_parse(candidate)
-                if result:
-                    return result
-                # Try fixing trailing commas (common LLM error)
-                fixed = re.sub(r",\s*([}\]])", r"\1", candidate)
-                result = _try_parse(fixed)
-                if result:
-                    return result
-
-            return None
 
         # If extending existing content, only generate the missing MCQs
         if extend_existing:
@@ -621,6 +624,199 @@ async def preload_topic_content(
                 "generated_by": tc.generated_by,
                 "already_existed": False,
             }
+    finally:
+        db.close()
+
+
+_PROMPT_GOLDEN_SOLUTION = (
+    "You are an expert AP CSA instructor writing a GOLDEN (ideal, exemplary) solution "
+    "for the following free response question.\n\n"
+    "**FRQ Type:** {frq_type}\n\n"
+    "**Question:**\n{question}\n\n"
+    "Write the best possible Java solution with:\n"
+    "- Clean, well-structured code following AP CSA conventions\n"
+    "- Detailed inline comments explaining EACH logical step\n"
+    "- Meaningful variable names\n"
+    "- Proper edge case handling\n\n"
+    "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+    '{{\n'
+    '  "solution_code": "Complete Java code with detailed comments",\n'
+    '  "explanation": "Step-by-step walkthrough of the approach and why each choice was made"\n'
+    '}}'
+)
+
+_PROMPT_EXTRA_FRQ = (
+    "Create an AP-style free response question about '{topic_title}' "
+    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} in {course_name}.\n\n"
+    "The AP CSA exam has 4 FRQ types: (1) Methods and Control Structures, "
+    "(2) Class Design, (3) Data Analysis with ArrayList, (4) 2D Array.\n"
+    "Choose the FRQ type most relevant to this topic.\n\n"
+    "IMPORTANT: This question must be DIFFERENT from these existing questions:\n"
+    "{existing_questions}\n\n"
+    "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+    '{{\n'
+    '  "question": "Full problem statement in markdown (include any class/method signatures, requirements, examples)",\n'
+    '  "frq_type": "Methods and Control Structures",\n'
+    '  "sample_solution": "Complete Java code solution",\n'
+    '  "rubric": "Point-by-point scoring rubric in markdown (e.g., +1 for loop, +1 for correct return)",\n'
+    '  "explanation": "Step-by-step explanation of the solution approach in markdown"\n'
+    '}}\n\n'
+    "Make it realistic and representative of actual AP CSA FRQs. "
+    "The question should require writing Java code (a method or class).{variation_hint}"
+)
+
+_EXTRA_FRQ_COUNT = 3
+
+
+def _init_tutor_agent(course):
+    """Create a TutorAgent instance for content generation."""
+    from src.agents.tutor import TutorAgent
+    from src.services.llm.config import get_llm_config
+
+    try:
+        llm_config = get_llm_config()
+        api_key = llm_config.api_key
+        base_url = llm_config.base_url
+        api_version = getattr(llm_config, "api_version", None)
+    except Exception:
+        api_key = None
+        base_url = None
+        api_version = None
+
+    project_root = Path(__file__).parent.parent.parent.parent
+    from src.services.config import load_config_with_main
+    config = load_config_with_main("solve_config.yaml", project_root)
+
+    return TutorAgent(
+        course_code=course.code,
+        course_name=course.name,
+        language="en",
+        config=config,
+        api_key=api_key,
+        base_url=base_url,
+        api_version=api_version,
+    )
+
+
+@router.post("/{course_id}/topics/{topic_id}/golden-solutions")
+async def generate_golden_solutions(course_id: str, topic_id: str):
+    """Generate golden (ideal) solutions for existing FRQ questions. Stores separately from content."""
+    db = get_db()
+    try:
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        if not topic or topic.unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        tc = db.query(TopicContent).filter(TopicContent.topic_id == topic_id).first()
+        if not tc:
+            raise HTTPException(status_code=400, detail="Preloaded content required first")
+
+        content = json.loads(tc.content)
+        frqs = content.get("practice_frq", [])
+        if not frqs:
+            raise HTTPException(status_code=400, detail="No FRQ questions found in preloaded content")
+
+        # Also include extra_frqs if they exist
+        extra = json.loads(tc.extra_frqs) if tc.extra_frqs else []
+        all_frqs = frqs + extra
+
+        course = topic.unit.course
+        agent = _init_tutor_agent(course)
+
+        async def _gen(prompt):
+            result = await agent.process(
+                message=prompt, history=[], topic_title=topic.title,
+                unit_title=topic.unit.title, unit_number=topic.unit.unit_number, stream=False,
+            )
+            return result.get("response", "")
+
+        golden = []
+        for i, frq in enumerate(all_frqs):
+            if "raw_text" in frq and "question" not in frq:
+                continue
+            question = frq.get("question", "")
+            frq_type = frq.get("frq_type", "Methods and Control Structures")
+            logger.info(f"Generating golden solution {i+1}/{len(all_frqs)} for {topic.topic_number}...")
+            raw = await _gen(_PROMPT_GOLDEN_SOLUTION.format(question=question, frq_type=frq_type))
+            parsed = _parse_json_response(raw)
+            if parsed and "solution_code" in parsed:
+                golden.append({"frq_index": i, **parsed})
+            else:
+                golden.append({"frq_index": i, "solution_code": raw, "explanation": ""})
+
+        tc.golden_solutions = json.dumps(golden)
+        db.commit()
+
+        return {"topic_id": topic_id, "golden_solutions": golden, "count": len(golden)}
+    finally:
+        db.close()
+
+
+@router.post("/{course_id}/topics/{topic_id}/extra-frqs")
+async def generate_extra_frqs(course_id: str, topic_id: str):
+    """Generate additional FRQ questions. Stores separately in extra_frqs column."""
+    db = get_db()
+    try:
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        if not topic or topic.unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        tc = db.query(TopicContent).filter(TopicContent.topic_id == topic_id).first()
+        if not tc:
+            raise HTTPException(status_code=400, detail="Preloaded content required first")
+
+        content = json.loads(tc.content)
+        existing_frqs = content.get("practice_frq", [])
+
+        # Summarize existing questions so the LLM avoids duplicates
+        existing_summaries = []
+        for j, frq in enumerate(existing_frqs):
+            q = frq.get("question", frq.get("raw_text", ""))[:200]
+            existing_summaries.append(f"  FRQ {j+1}: {q}")
+        existing_text = "\n".join(existing_summaries) if existing_summaries else "(none)"
+
+        course = topic.unit.course
+        unit = topic.unit
+        agent = _init_tutor_agent(course)
+
+        fmt = {
+            "topic_title": topic.title,
+            "topic_number": topic.topic_number,
+            "unit_number": unit.unit_number,
+            "unit_title": unit.title,
+            "course_name": course.name,
+            "existing_questions": existing_text,
+        }
+
+        async def _gen(prompt):
+            result = await agent.process(
+                message=prompt, history=[], topic_title=topic.title,
+                unit_title=unit.title, unit_number=unit.unit_number, stream=False,
+            )
+            return result.get("response", "")
+
+        extra_hints = [
+            "",
+            "\n\nMake this a DIFFERENT style focusing on a different FRQ type or aspect.",
+            "\n\nMake this a challenging question combining multiple concepts from this topic.",
+        ]
+
+        extra_list = []
+        for i in range(_EXTRA_FRQ_COUNT):
+            hint = extra_hints[i] if i < len(extra_hints) else extra_hints[-1]
+            logger.info(f"Generating extra FRQ {i+1}/{_EXTRA_FRQ_COUNT} for {topic.topic_number}...")
+            raw = await _gen(_PROMPT_EXTRA_FRQ.format(**fmt, variation_hint=hint))
+            parsed = _parse_json_response(raw)
+            if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
+                extra_list.append(parsed)
+            else:
+                logger.warning(f"Extra FRQ {i+1} not valid JSON, storing as text")
+                extra_list.append({"raw_text": raw})
+
+        tc.extra_frqs = json.dumps(extra_list)
+        db.commit()
+
+        return {"topic_id": topic_id, "extra_frqs": extra_list, "count": len(extra_list)}
     finally:
         db.close()
 
