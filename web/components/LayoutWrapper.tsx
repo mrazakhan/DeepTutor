@@ -18,16 +18,16 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const isLoginPage = pathname === "/login";
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
 
   useEffect(() => {
-    if (!loading && !user && !isLoginPage) {
+    if (!loading && !user && !isAuthPage) {
       router.push("/login");
     }
-  }, [loading, user, isLoginPage, router]);
+  }, [loading, user, isAuthPage, router]);
 
-  // Login page — always render
-  if (isLoginPage) {
+  // Auth pages (login/signup) — always render
+  if (isAuthPage) {
     return <>{children}</>;
   }
 

@@ -30,6 +30,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    display_name: str
+
+
 class LoginResponse(BaseModel):
     token: str
     user: dict
@@ -52,6 +58,58 @@ def _get_current_user(request: Request) -> dict | None:
         del _tokens[token]
         return None
     return session
+
+
+@router.post("/register")
+async def register(body: RegisterRequest):
+    """Create a new student account and return a login token."""
+    username = body.username.strip()
+    display_name = body.display_name.strip()
+    password = body.password
+
+    if not username or len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if not display_name:
+        raise HTTPException(status_code=400, detail="Display name is required")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    db = get_db()
+    try:
+        if db.query(User).filter(User.username == username).first():
+            raise HTTPException(status_code=409, detail="Username already taken")
+
+        user = User(
+            username=username,
+            password_hash=_hash_password(password),
+            display_name=display_name,
+            role="student",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Auto-login: issue token
+        token = secrets.token_urlsafe(32)
+        _tokens[token] = {
+            "user_id": user.id,
+            "username": user.username,
+            "display_name": user.display_name,
+            "role": user.role,
+            "expires": time.time() + TOKEN_EXPIRY_SECONDS,
+        }
+
+        return {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "display_name": user.display_name,
+                "role": user.role,
+            },
+        }
+    finally:
+        db.close()
 
 
 @router.post("/login")
