@@ -121,6 +121,10 @@ async def login(body: LoginRequest):
         if not user or user.password_hash != _hash_password(body.password):
             raise HTTPException(status_code=401, detail="Invalid username or password")
 
+        # Track last login time
+        user.last_login_at = datetime.now(timezone.utc)
+        db.commit()
+
         token = secrets.token_urlsafe(32)
         _tokens[token] = {
             "user_id": user.id,

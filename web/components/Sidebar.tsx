@@ -15,6 +15,7 @@ import {
   Check,
   X,
   Library,
+  Shield,
   LucideIcon,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
@@ -57,16 +58,21 @@ export default function Sidebar() {
     useState(sidebarDescription);
   const descriptionInputRef = useRef<HTMLInputElement>(null);
 
-  // Build navigation items from saved order
+  // Build navigation items from saved order, plus admin if applicable
   const navItems = useMemo(() => {
-    return sidebarNavOrder.start
+    const items = sidebarNavOrder.start
       .filter((href) => ALL_NAV_ITEMS[href])
       .map((href) => ({
         name: t(ALL_NAV_ITEMS[href].nameKey),
         href,
         icon: ALL_NAV_ITEMS[href].icon,
       }));
-  }, [sidebarNavOrder, t]);
+    // Add admin dashboard for admin users
+    if (user?.role === "admin") {
+      items.push({ name: t("Admin"), href: "/admin", icon: Shield });
+    }
+    return items;
+  }, [sidebarNavOrder, t, user]);
 
   // Handle description edit
   const handleDescriptionEdit = () => {
