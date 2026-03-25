@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,8 +10,10 @@ import {
   FlaskConical,
   ChevronRight,
   Search,
+  Star,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 interface CourseItem {
   id: string;
@@ -49,7 +51,9 @@ const SUBJECT_CONFIG: Record<
 
 export default function CourseCatalogPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -57,6 +61,18 @@ export default function CourseCatalogPage() {
   useEffect(() => {
     fetchCourses();
   }, []);
+
+  // Fetch favorites when user is available
+  useEffect(() => {
+    if (!user) return;
+    const token = localStorage.getItem("deeptutor_token");
+    fetch(apiUrl("/api/v1/courses/favorites"), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((ids: string[]) => setFavorites(new Set(ids)))
+      .catch(() => {});
+  }, [user]);
 
   async function fetchCourses() {
     try {
@@ -69,6 +85,26 @@ export default function CourseCatalogPage() {
       setLoading(false);
     }
   }
+
+  const toggleFavorite = useCallback(async (courseId: string) => {
+    if (!user) return;
+    const token = localStorage.getItem("deeptutor_token");
+    try {
+      const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/favorite`), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const { favorited } = await res.json();
+        setFavorites((prev) => {
+          const next = new Set(prev);
+          if (favorited) next.add(courseId);
+          else next.delete(courseId);
+          return next;
+        });
+      }
+    } catch { /* skip */ }
+  }, [user]);
 
   const filtered = courses.filter((c) => {
     if (filter && c.subject_area !== filter) return false;
@@ -176,32 +212,60 @@ export default function CourseCatalogPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map((course) => (
-                  <Link
-                    key={course.id}
-                    href={`/courses/${course.id}`}
-                    className="group block p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-tight">
-                        {course.name}
-                      </h3>
-                      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-blue-500 transition-colors flex-shrink-0 mt-1" />
+                {items.map((course) => {
+                  const isFav = favorites.has(course.id);
+                  return (
+                    <div
+                      key={course.id}
+                      className="group relative block p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all"
+                    >
+                      {/* Star button */}
+                      {user && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleFavorite(course.id);
+                          }}
+                          className="absolute top-4 right-4 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors z-10"
+                          title={isFav ? t("Remove from My Courses") : t("Add to My Courses")}
+                        >
+                          <Star
+                            className={`w-4 h-4 transition-colors ${
+                              isFav
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-slate-300 dark:text-slate-600 hover:text-amber-400"
+                            }`}
+                          />
+                        </button>
+                      )}
+
+                      <Link
+                        href={`/courses/${course.id}`}
+                        className="block"
+                      >
+                        <div className="flex items-start justify-between mb-3 pr-6">
+                          <h3 className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-tight">
+                            {course.name}
+                          </h3>
+                          <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-blue-500 transition-colors flex-shrink-0 mt-1" />
+                        </div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 line-clamp-2">
+                          {course.description}
+                        </p>
+                        <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            {course.unit_count} {t("units")}
+                          </span>
+                          <span>
+                            {course.topic_count} {t("topics")}
+                          </span>
+                        </div>
+                      </Link>
                     </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 line-clamp-2">
-                      {course.description}
-                    </p>
-                    <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <BookOpen className="w-3.5 h-3.5" />
-                        {course.unit_count} {t("units")}
-                      </span>
-                      <span>
-                        {course.topic_count} {t("topics")}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
