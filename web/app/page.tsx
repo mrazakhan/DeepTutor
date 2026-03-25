@@ -55,6 +55,27 @@ const SUBJECT_COLOR: Record<string, { text: string; bg: string }> = {
   },
 };
 
+/** Star with three states: hollow, half-filled, fully filled */
+function CourseStarIcon({ state }: { state: "empty" | "half" | "full" }) {
+  if (state === "full") {
+    return <Star className="w-4 h-4 fill-amber-400 text-amber-400" />;
+  }
+  if (state === "half") {
+    return (
+      <span className="relative inline-flex w-4 h-4">
+        {/* Outline star (background) */}
+        <Star className="w-4 h-4 text-amber-400 absolute inset-0" />
+        {/* Filled star clipped to left half */}
+        <Star
+          className="w-4 h-4 fill-amber-400 text-amber-400 absolute inset-0"
+          style={{ clipPath: "inset(0 50% 0 0)" }}
+        />
+      </span>
+    );
+  }
+  return <Star className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover/star:text-amber-400 transition-colors" />;
+}
+
 export default function HomePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -162,13 +183,7 @@ export default function HomePage() {
       : 0;
     const isFav = favorites.has(course.id);
     const hasProgress = stats.assessed > 0;
-
-    // Star states: hollow (no interaction), partial fill (has progress), full fill (starred)
-    const starClass = isFav
-      ? "fill-amber-400 text-amber-400"
-      : hasProgress
-      ? "fill-amber-200 text-amber-400 dark:fill-amber-400/30 dark:text-amber-400"
-      : "text-slate-300 dark:text-slate-600 hover:text-amber-400";
+    const starState = isFav ? "full" : hasProgress ? "half" : "empty";
 
     return (
       <div
@@ -183,10 +198,10 @@ export default function HomePage() {
               e.stopPropagation();
               toggleFavorite(course.id);
             }}
-            className="absolute top-3 right-3 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors z-10"
-            title={isFav ? t("Remove from My Courses") : hasProgress ? t("Add to My Courses (in progress)") : t("Add to My Courses")}
+            className="group/star absolute top-3 right-3 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors z-10"
+            title={isFav ? t("Remove from My Courses") : t("Add to My Courses")}
           >
-            <Star className={`w-4 h-4 transition-colors ${starClass}`} />
+            <CourseStarIcon state={starState} />
           </button>
         )}
 
