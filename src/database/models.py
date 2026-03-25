@@ -125,6 +125,7 @@ class User(Base):
     display_name = Column(String(100), nullable=False)
     role = Column(String(20), nullable=False, default="student")  # student | admin
     created_at = Column(DateTime, default=utcnow)
+    last_login_at = Column(DateTime, nullable=True)
 
     assessments = relationship("TopicAssessment", back_populates="user", cascade="all, delete-orphan")
     favorite_courses = relationship("UserCourseFavorite", back_populates="user", cascade="all, delete-orphan")
