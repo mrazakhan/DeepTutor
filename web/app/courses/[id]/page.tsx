@@ -417,7 +417,7 @@ export default function CourseDetailPage({
           )}
           {user && (
             <Link
-              href={`/courses/${courseId}/exam`}
+              href={`/courses/${id}/exam`}
               className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 transition-colors"
             >
               <GraduationCap className="w-4 h-4" />
