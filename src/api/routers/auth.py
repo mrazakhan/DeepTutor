@@ -161,6 +161,40 @@ async def get_me(request: Request):
     }
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(body: ChangePasswordRequest, request: Request):
+    """Change the authenticated user's password."""
+    user_info = _get_current_user(request)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    db = get_db()
+    try:
+        user = db.query(User).filter(User.id == user_info["user_id"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Verify current password
+        if user.password_hash != _hash_password(body.current_password):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+        # Update password
+        user.password_hash = _hash_password(body.new_password)
+        db.commit()
+
+        return {"status": "ok", "message": "Password changed successfully"}
+    finally:
+        db.close()
+
+
 @router.post("/logout")
 async def logout(request: Request):
     """Invalidate the current token."""

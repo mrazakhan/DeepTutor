@@ -16,10 +16,13 @@ import {
   X,
   Library,
   Shield,
+  KeyRound,
+  Loader2,
   LucideIcon,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
 import { useAuth } from "@/lib/auth";
+import { apiUrl } from "@/lib/api";
 
 const SIDEBAR_EXPANDED_WIDTH = 256;
 const SIDEBAR_COLLAPSED_WIDTH = 64;
@@ -51,6 +54,38 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
 
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
+
+  // Change password state
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+
+  async function handleChangePassword() {
+    setPwError("");
+    if (newPw.length < 6) { setPwError("Password must be at least 6 characters"); return; }
+    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
+    setPwLoading(true);
+    try {
+      const token = localStorage.getItem("deeptutor_token");
+      const res = await fetch(apiUrl("/api/v1/auth/change-password"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPwError(data.detail || "Failed to change password");
+      } else {
+        setPwSuccess(true);
+        setTimeout(() => { setShowChangePw(false); setPwSuccess(false); setCurrentPw(""); setNewPw(""); setConfirmPw(""); }, 1500);
+      }
+    } catch { setPwError("Connection error"); }
+    finally { setPwLoading(false); }
+  }
 
   // Editable description state
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -336,6 +371,7 @@ export default function Sidebar() {
 
         {/* User info */}
         {user ? (
+          <>
           <div
             className={`flex items-center rounded-md text-slate-500 dark:text-slate-400 ${
               sidebarCollapsed ? "justify-center p-2" : "gap-2.5 px-2 py-2"
@@ -349,15 +385,77 @@ export default function Sidebar() {
                 <div className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">
                   {user.display_name}
                 </div>
-                <button
-                  onClick={logout}
-                  className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
-                >
-                  {t("Sign out")}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowChangePw(true)}
+                    className="text-[10px] text-slate-400 hover:text-blue-500 transition-colors"
+                  >
+                    {t("Change password")}
+                  </button>
+                  <span className="text-[10px] text-slate-300 dark:text-slate-600">·</span>
+                  <button
+                    onClick={logout}
+                    className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    {t("Sign out")}
+                  </button>
+                </div>
               </div>
             )}
           </div>
+
+          {/* Change Password Modal */}
+          {showChangePw && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white dark:bg-slate-800 rounded-xl p-5 max-w-sm w-full mx-4 shadow-xl">
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-blue-500" />
+                  {t("Change Password")}
+                </h3>
+                <div className="space-y-3">
+                  <input
+                    type="password"
+                    placeholder={t("Current password")}
+                    value={currentPw}
+                    onChange={(e) => setCurrentPw(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                  <input
+                    type="password"
+                    placeholder={t("New password (min 6 chars)")}
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                  <input
+                    type="password"
+                    placeholder={t("Confirm new password")}
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                  {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+                  {pwSuccess && <p className="text-xs text-green-500">✓ Password changed!</p>}
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={handleChangePassword}
+                    disabled={pwLoading || !currentPw || !newPw || !confirmPw}
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {pwLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("Change Password")}
+                  </button>
+                  <button
+                    onClick={() => { setShowChangePw(false); setPwError(""); setCurrentPw(""); setNewPw(""); setConfirmPw(""); }}
+                    className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    {t("Cancel")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          </>
         ) : (
           <Link
             href="/login"
