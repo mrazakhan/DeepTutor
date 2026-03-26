@@ -2,6 +2,7 @@
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File
@@ -910,9 +911,14 @@ def _user_upload_dir(user_id: str, course_code: str) -> Path:
 async def upload_user_content(
     course_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
 ):
-    """Upload personal study materials for a course (per-user, not shared)."""
+    """Upload personal study materials for a course (per-user, not shared).
+
+    Files are saved to the user's upload dir AND indexed into a personal
+    RAG knowledge base so the AI tutor can reference them in responses.
+    """
     user = _get_user_from_request(request)
     user_id = user["user_id"]
 
@@ -922,24 +928,82 @@ async def upload_user_content(
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
 
+        # Save files to user upload directory (for listing/deletion)
         upload_dir = _user_upload_dir(user_id, course.code)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
+        # Also prepare KB raw directory for RAG indexing
+        kb_name = f"user-{user_id}-{course.code.lower().replace('_', '-')}"
+        kb_base_dir = Path(__file__).parent.parent.parent.parent / "data" / "knowledge_bases"
+        kb_dir = kb_base_dir / kb_name
+        raw_dir = kb_dir / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create metadata.json if it doesn't exist (first upload)
+        metadata_file = kb_dir / "metadata.json"
+        if not metadata_file.exists():
+            import json as _json
+            metadata = {
+                "name": kb_name,
+                "description": f"Personal study materials for {course.name}",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "document_count": 0,
+                "status": "ready",
+                "rag_provider": "llamaindex",
+            }
+            with open(metadata_file, "w", encoding="utf-8") as mf:
+                _json.dump(metadata, mf, indent=2)
+
         saved_files = []
+        uploaded_file_paths = []
         for f in files:
-            # Sanitize filename
             safe_name = f.filename.replace("/", "_").replace("\\", "_") if f.filename else "upload"
+            content = await f.read()
+
+            # Save to user uploads dir (for UI listing)
             dest = upload_dir / safe_name
             with open(dest, "wb") as out:
-                content = await f.read()
                 out.write(content)
+
+            # Also save to KB raw dir (for RAG indexing)
+            kb_dest = raw_dir / safe_name
+            with open(kb_dest, "wb") as out:
+                out.write(content)
+
             saved_files.append(safe_name)
+            uploaded_file_paths.append(str(kb_dest))
             logger.info(f"User {user_id} uploaded '{safe_name}' for {course.code}")
 
+        # Trigger RAG indexing in background
+        if uploaded_file_paths:
+            try:
+                from src.services.llm.config import get_llm_config
+                llm_config = get_llm_config()
+                api_key = llm_config.api_key
+                base_url = llm_config.base_url
+            except Exception:
+                api_key = None
+                base_url = None
+
+            if api_key:
+                from src.api.routers.knowledge import run_upload_processing_task
+                background_tasks.add_task(
+                    run_upload_processing_task,
+                    kb_name=kb_name,
+                    base_dir=str(kb_base_dir),
+                    api_key=api_key,
+                    base_url=base_url,
+                    uploaded_file_paths=uploaded_file_paths,
+                )
+                logger.info(f"Triggered RAG indexing for user KB '{kb_name}' ({len(uploaded_file_paths)} files)")
+            else:
+                logger.warning(f"Skipping RAG indexing for '{kb_name}': no LLM API key configured")
+
         return {
-            "message": f"Uploaded {len(saved_files)} file(s)",
+            "message": f"Uploaded {len(saved_files)} file(s). Indexing in background for AI tutor use.",
             "files": saved_files,
             "course_code": course.code,
+            "indexing": bool(uploaded_file_paths),
         }
     finally:
         db.close()
