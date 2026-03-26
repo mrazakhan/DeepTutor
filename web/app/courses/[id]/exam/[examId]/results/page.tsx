@@ -128,7 +128,8 @@ export default function ExamResultsPage({
               {result.total_score !== null ? `${Math.round(result.total_score)}%` : "—"}
             </div>
             <div className="text-sm text-slate-500 mt-1">
-              Estimated AP Score: <strong className="text-lg">{apScore}</strong>/5
+              Est. AP Score: <strong className="text-lg">{apScore}</strong>/5
+                <span className="text-[10px] text-slate-400 block">Mock exam — not an official College Board score</span>
             </div>
           </div>
         </div>

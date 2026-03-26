@@ -180,8 +180,11 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
       <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
         Mock AP Exam
       </h1>
-      <p className="text-slate-500 dark:text-slate-400 mb-8">
+      <p className="text-slate-500 dark:text-slate-400 mb-1">
         {course?.name} — Full timed exam simulation
+      </p>
+      <p className="text-xs text-slate-400 mb-8">
+        Practice exams with AI-generated questions matching official AP format. Scores are estimates — not official College Board scores.
       </p>
 
       {/* Exam Format Summary */}
@@ -225,7 +228,7 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
               <p className="text-sm text-slate-700 dark:text-slate-300">
                 Completed — Score: <strong>{Math.round(finalStatus.student_attempt.total_score || 0)}%</strong>
                 {finalStatus.student_attempt.ap_score && (
-                  <span className="ml-2">AP Score: <strong>{finalStatus.student_attempt.ap_score}/5</strong></span>
+                  <span className="ml-2">Est. AP: <strong>{finalStatus.student_attempt.ap_score}/5</strong></span>
                 )}
               </p>
             </div>
@@ -331,7 +334,7 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
                   {exam.total_score !== null && (
                     <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
                       Score: <strong>{Math.round(exam.total_score)}%</strong>
-                      {exam.ap_score && <span className="ml-2 text-xs font-bold text-purple-600">AP: {exam.ap_score}/5</span>}
+                      {exam.ap_score && <span className="ml-2 text-xs font-bold text-purple-600">Est. AP: {exam.ap_score}/5</span>}
                       {exam.mcq_score !== null && <span className="text-xs text-slate-400 ml-2">MCQ: {Math.round(exam.mcq_score)}%</span>}
                       {exam.frq_score !== null && <span className="text-xs text-slate-400 ml-2">FRQ: {exam.frq_score}%</span>}
                     </div>

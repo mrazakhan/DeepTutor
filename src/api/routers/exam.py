@@ -300,17 +300,42 @@ async def start_final_exam(course_id: str, request: Request):
         db.add(student_exam)
         db.flush()
 
-        # Copy all questions
+        # Copy all questions with randomized order within each section
+        # Group by section, shuffle within each, reassign question_index
+        from collections import defaultdict
+        section_qs: dict[int, list] = defaultdict(list)
         for q in template.questions:
-            copy = ExamQuestion(
-                exam_id=student_exam.id,
-                section_index=q.section_index,
-                question_index=q.question_index,
-                question_type=q.question_type,
-                question_data=q.question_data,
-                max_score=q.max_score,
-            )
-            db.add(copy)
+            section_qs[q.section_index].append(q)
+
+        for sec_idx, qs in section_qs.items():
+            shuffled = list(qs)
+            random.shuffle(shuffled)
+            for new_idx, q in enumerate(shuffled):
+                # For MCQs, also randomize answer option order
+                qdata = json.loads(q.question_data)
+                if q.question_type == "mcq" and "options" in qdata:
+                    opts = list(qdata["options"].items())
+                    random.shuffle(opts)
+                    new_letters = ["A", "B", "C", "D"]
+                    old_correct = qdata.get("correct", "")
+                    new_options = {}
+                    new_correct = old_correct
+                    for i, (old_letter, text) in enumerate(opts):
+                        new_options[new_letters[i]] = text
+                        if old_letter == old_correct:
+                            new_correct = new_letters[i]
+                    qdata["options"] = new_options
+                    qdata["correct"] = new_correct
+
+                copy = ExamQuestion(
+                    exam_id=student_exam.id,
+                    section_index=sec_idx,
+                    question_index=new_idx,
+                    question_type=q.question_type,
+                    question_data=json.dumps(qdata),
+                    max_score=q.max_score,
+                )
+                db.add(copy)
 
         db.commit()
         return {"exam_id": student_exam.id, "status": "ready", "already_exists": False}
