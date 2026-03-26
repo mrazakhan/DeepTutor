@@ -250,6 +250,7 @@ export default function StudyPage({
   const [frqEvalStreaming, setFrqEvalStreaming] = useState(false);
   const frqEvalWsRef = useRef<WebSocket | null>(null);
   const evalScrollRef = useRef<HTMLDivElement>(null);
+  const [frqEvalCode, setFrqEvalCode] = useState(""); // snapshot of code at eval time
   // Inline code editor for non-preloaded FRQ responses
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [inlineEditorCode, setInlineEditorCode] = useState("");
@@ -682,18 +683,29 @@ export default function StudyPage({
   function handleEvaluateFRQ() {
     if (!activeFRQ || !frqAnswer.trim()) return;
 
+    // Number lines so the LLM can reference them
+    const numberedCode = frqAnswer
+      .split("\n")
+      .map((line, i) => `${i + 1}: ${line}`)
+      .join("\n");
+
     const evalPrompt = [
       "**Evaluate my Java code for this FRQ.**\n",
       `**Question:** ${activeFRQ.question}\n`,
-      `**My Code:**\n\`\`\`java\n${frqAnswer}\n\`\`\`\n`,
+      `**My Code (with line numbers):**\n\`\`\`\n${numberedCode}\n\`\`\`\n`,
       "**Instructions for evaluation:**",
-      "1. Review my code **line by line**. For each line that has an issue, quote the line, explain what's wrong, and suggest the fix.",
-      "2. Check for: correctness, edge cases, style, and common AP CSA mistakes.",
-      `3. Score my solution against this rubric:\n${activeFRQ.rubric || "Standard AP FRQ rubric"}`,
-      "4. End with an overall score (e.g., 5/9 points) and key areas to improve.",
+      "1. Start with a brief **Summary** (1-2 sentences on overall quality).",
+      "2. Then list **Issues Found**. For EACH issue, format EXACTLY like this:",
+      "   **Line X:** `quoted code` — explanation of what's wrong and the fix.",
+      "   If multiple lines have issues, list each separately with **Line N:** prefix.",
+      "3. Then a **Rubric Scoring** section — score each rubric point with ✅ or ❌:",
+      `${activeFRQ.rubric || "Standard AP FRQ rubric"}`,
+      "4. End with **Overall Score: X/Y points** and 2-3 bullet points for key improvements.",
+      "5. IMPORTANT: Always use **Line N:** format when referencing code lines so errors can be highlighted.",
     ].join("\n");
 
-    // Stream evaluation into overlay panel (not chat)
+    // Save code snapshot and stream evaluation into split panel (not chat)
+    setFrqEvalCode(frqAnswer);
     setFrqEvalResult("");
     setFrqEvalStreaming(true);
 
@@ -992,8 +1004,17 @@ export default function StudyPage({
     ? `Unit ${unit.unit_number}: ${unit.title}`
     : "";
 
-  // Whether to show the right-side code editor panel
-  const showEditorPanel = !!(activeFRQ && !showFRQSolution) || (showInlineEditor && !isLoading);
+  // Whether to show the right-side code editor panel (also show during evaluation)
+  const showEditorPanel = !!(activeFRQ && !showFRQSolution) || (showInlineEditor && !isLoading) || frqEvalResult !== null;
+
+  // Extract error line numbers from evaluation text (matches "**Line N:**" pattern)
+  const evalErrorLines = (() => {
+    if (!frqEvalResult) return [];
+    const matches = frqEvalResult.matchAll(/\*\*Line\s+(\d+)\s*[:\*]/gi);
+    const lines = new Set<number>();
+    for (const m of matches) lines.add(parseInt(m[1], 10));
+    return Array.from(lines).sort((a, b) => a - b);
+  })();
 
   return (
     <div className="flex flex-col h-full">
@@ -1809,143 +1830,169 @@ export default function StudyPage({
 
       {/* Right-side Code Editor Panel */}
       {showEditorPanel && (
-        <div className="w-1/2 flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900 relative">
-          {/* Editor header */}
-          <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500" />
-              {activeFRQ ? (
-                <>FRQ {frqIndex + 1}{activeFRQ.frq_type && ` — ${activeFRQ.frq_type}`}</>
-              ) : (
-                t("Write Your Solution")
-              )}
-            </span>
-            <button
-              onClick={() => {
-                if (activeFRQ) { setShowFRQSolution(true); setActiveFRQ(null); }
-                else { setShowInlineEditor(false); }
-              }}
-              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-            >
-              ✕ {t("Close")}
-            </button>
-          </div>
+        <div className="w-1/2 flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900">
 
-          {/* Editor body */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <label className="text-xs text-slate-500 mb-2 block">{t("Write your Java code:")}</label>
-            <CodeEditor
-              value={activeFRQ ? frqAnswer : inlineEditorCode}
-              onChange={activeFRQ ? setFrqAnswer : setInlineEditorCode}
-              language="java"
-              height="calc(100vh - 320px)"
-            />
-          </div>
+          {/* ── SPLIT VIEW: Code (top) + Evaluation (bottom) ── */}
+          {frqEvalResult !== null ? (
+            <>
+              {/* Top half: student code with error highlights */}
+              <div className="flex flex-col" style={{ height: "45%" }}>
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Your Code
+                    {evalErrorLines.length > 0 && (
+                      <span className="ml-2 text-red-500 normal-case tracking-normal font-medium">
+                        — {evalErrorLines.length} issue{evalErrorLines.length !== 1 ? "s" : ""} found
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => { setFrqEvalResult(null); setFrqEvalStreaming(false); }}
+                    className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                    title="Close evaluation"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <CodeEditor
+                    value={frqEvalCode}
+                    onChange={() => {}}
+                    language="java"
+                    height="100%"
+                    readOnly
+                    errorLines={evalErrorLines}
+                  />
+                </div>
+              </div>
 
-          {/* Editor actions */}
-          <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2">
-            {activeFRQ ? (
-              <>
-                <button
-                  onClick={handleEvaluateFRQ}
-                  disabled={!frqAnswer.trim() || frqEvalStreaming}
-                  className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
+              {/* Divider with resize handle styling */}
+              <div className="h-1 bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
+
+              {/* Bottom half: evaluation feedback */}
+              <div className="flex flex-col" style={{ height: "calc(55% - 4px)" }}>
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800">
                   {frqEvalStreaming ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Evaluating...
-                    </span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
                   ) : (
-                    t("Evaluate My Code")
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
                   )}
-                </button>
-                <button
-                  onClick={handleSubmitFRQ}
-                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
-                >
-                  {t("View Solution")}
-                </button>
-                <button
-                  onClick={() => { setShowFRQSolution(true); handleSubmitFRQ(); }}
-                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                >
-                  {t("Skip")}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={handleInlineEvaluate}
-                  disabled={!inlineEditorCode.trim() || isLoading}
-                  className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {t("Evaluate My Code")}
-                </button>
-                <button
-                  onClick={() => setShowInlineEditor(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                >
-                  {t("Dismiss")}
-                </button>
-              </>
-            )}
-          </div>
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                    {frqEvalStreaming ? "Evaluating..." : "Evaluation"}
+                  </span>
+                </div>
 
-          {/* ── FRQ Evaluation Overlay ── */}
-          {frqEvalResult !== null && (
-            <div className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-slate-900">
-              {/* Overlay header */}
-              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800">
+                <div
+                  ref={evalScrollRef}
+                  className="flex-1 overflow-y-auto px-4 py-3"
+                >
+                  <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-slate-800 dark:prose-headings:text-slate-200 prose-headings:text-base prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950 prose-pre:text-sm prose-strong:text-slate-800 dark:prose-strong:text-slate-200 prose-li:text-slate-600 dark:prose-li:text-slate-300">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {processLatexContent(frqEvalResult)}
+                    </ReactMarkdown>
+                    {frqEvalStreaming && (
+                      <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer actions */}
+                {!frqEvalStreaming && (
+                  <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-700 flex gap-2">
+                    <button
+                      onClick={() => { setFrqEvalResult(null); }}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+                    >
+                      ← Edit Code
+                    </button>
+                    <button
+                      onClick={() => { setFrqEvalResult(null); handleNextFRQ(); }}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                    >
+                      Next FRQ →
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            /* ── NORMAL: Editor only ── */
+            <>
+              {/* Editor header */}
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                  {frqEvalStreaming ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  {activeFRQ ? (
+                    <>FRQ {frqIndex + 1}{activeFRQ.frq_type && ` — ${activeFRQ.frq_type}`}</>
                   ) : (
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    t("Write Your Solution")
                   )}
-                  {frqEvalStreaming ? "Evaluating your code..." : "Evaluation Complete"}
                 </span>
                 <button
-                  onClick={() => { setFrqEvalResult(null); setFrqEvalStreaming(false); }}
-                  className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  title="Close evaluation"
+                  onClick={() => {
+                    if (activeFRQ) { setShowFRQSolution(true); setActiveFRQ(null); }
+                    else { setShowInlineEditor(false); }
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  ✕ {t("Close")}
                 </button>
               </div>
 
-              {/* Scrollable evaluation content */}
-              <div
-                ref={evalScrollRef}
-                className="flex-1 overflow-y-auto px-5 py-4"
-              >
-                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-slate-800 dark:prose-headings:text-slate-200 prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950 prose-pre:text-sm prose-strong:text-slate-800 dark:prose-strong:text-slate-200 prose-li:text-slate-600 dark:prose-li:text-slate-300">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {processLatexContent(frqEvalResult)}
-                  </ReactMarkdown>
-                  {frqEvalStreaming && (
-                    <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />
-                  )}
-                </div>
+              {/* Editor body */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <label className="text-xs text-slate-500 mb-2 block">{t("Write your Java code:")}</label>
+                <CodeEditor
+                  value={activeFRQ ? frqAnswer : inlineEditorCode}
+                  onChange={activeFRQ ? setFrqAnswer : setInlineEditorCode}
+                  language="java"
+                  height="calc(100vh - 320px)"
+                />
               </div>
 
-              {/* Overlay footer */}
-              {!frqEvalStreaming && (
-                <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex gap-2">
-                  <button
-                    onClick={() => { setFrqEvalResult(null); }}
-                    className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
-                  >
-                    ← Back to Editor
-                  </button>
-                  <button
-                    onClick={() => { setFrqEvalResult(null); handleNextFRQ(); }}
-                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
-                  >
-                    Next FRQ →
-                  </button>
-                </div>
-              )}
-            </div>
+              {/* Editor actions */}
+              <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2">
+                {activeFRQ ? (
+                  <>
+                    <button
+                      onClick={handleEvaluateFRQ}
+                      disabled={!frqAnswer.trim() || frqEvalStreaming}
+                      className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t("Evaluate My Code")}
+                    </button>
+                    <button
+                      onClick={handleSubmitFRQ}
+                      className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                    >
+                      {t("View Solution")}
+                    </button>
+                    <button
+                      onClick={() => { setShowFRQSolution(true); handleSubmitFRQ(); }}
+                      className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      {t("Skip")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleInlineEvaluate}
+                      disabled={!inlineEditorCode.trim() || isLoading}
+                      className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t("Evaluate My Code")}
+                    </button>
+                    <button
+                      onClick={() => setShowInlineEditor(false)}
+                      className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      {t("Dismiss")}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
