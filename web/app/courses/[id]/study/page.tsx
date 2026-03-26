@@ -251,6 +251,7 @@ export default function StudyPage({
   const frqEvalWsRef = useRef<WebSocket | null>(null);
   const evalScrollRef = useRef<HTMLDivElement>(null);
   const [frqEvalCode, setFrqEvalCode] = useState(""); // snapshot of code at eval time
+  const [revealedIssues, setRevealedIssues] = useState(0); // progressive reveal count
   // Inline code editor for non-preloaded FRQ responses
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [inlineEditorCode, setInlineEditorCode] = useState("");
@@ -690,24 +691,30 @@ export default function StudyPage({
       .join("\n");
 
     const evalPrompt = [
-      "**Evaluate my Java code for this FRQ.**\n",
+      "Evaluate my Java code for this FRQ.\n",
       `**Question:** ${activeFRQ.question}\n`,
       `**My Code (with line numbers):**\n\`\`\`\n${numberedCode}\n\`\`\`\n`,
-      "**Instructions for evaluation:**",
-      "1. Start with a brief **Summary** (1-2 sentences on overall quality).",
-      "2. Then list **Issues Found**. For EACH issue, format EXACTLY like this:",
-      "   **Line X:** `quoted code` — explanation of what's wrong and the fix.",
-      "   If multiple lines have issues, list each separately with **Line N:** prefix.",
-      "3. Then a **Rubric Scoring** section — score each rubric point with ✅ or ❌:",
-      `${activeFRQ.rubric || "Standard AP FRQ rubric"}`,
-      "4. End with **Overall Score: X/Y points** and 2-3 bullet points for key improvements.",
-      "5. IMPORTANT: Always use **Line N:** format when referencing code lines so errors can be highlighted.",
+      "Format your response using EXACTLY these section headers (each on its own line preceded by ##):\n",
+      "## Summary",
+      "1-2 sentences on overall quality, followed by **Score: X/Y points**\n",
+      "## Issues",
+      "For EACH issue, write a subsection like:",
+      "### Line N: short title",
+      "Then explain: quote the problematic code, what's wrong, and the fix.",
+      "Use a separate ### for each issue. If no issues, write 'No issues found.'\n",
+      "## Rubric",
+      "Score each rubric point with ✅ or ❌:",
+      `${activeFRQ.rubric || "Standard AP FRQ rubric"}\n`,
+      "## Improvements",
+      "2-3 bullet points for the most important things to study/practice.",
+      "\nIMPORTANT: Always use ### Line N: format for each issue so they can be displayed one at a time.",
     ].join("\n");
 
     // Save code snapshot and stream evaluation into split panel (not chat)
     setFrqEvalCode(frqAnswer);
     setFrqEvalResult("");
     setFrqEvalStreaming(true);
+    setRevealedIssues(0);
 
     if (frqEvalWsRef.current) frqEvalWsRef.current.close();
 
@@ -1007,14 +1014,43 @@ export default function StudyPage({
   // Whether to show the right-side code editor panel (also show during evaluation)
   const showEditorPanel = !!(activeFRQ && !showFRQSolution) || (showInlineEditor && !isLoading) || frqEvalResult !== null;
 
-  // Extract error line numbers from evaluation text (matches "**Line N:**" pattern)
-  const evalErrorLines = (() => {
-    if (!frqEvalResult) return [];
-    const matches = frqEvalResult.matchAll(/\*\*Line\s+(\d+)\s*[:\*]/gi);
-    const lines = new Set<number>();
-    for (const m of matches) lines.add(parseInt(m[1], 10));
-    return Array.from(lines).sort((a, b) => a - b);
+  // Parse evaluation result into structured sections
+  const evalSections = (() => {
+    if (!frqEvalResult) return { summary: "", issues: [] as { title: string; line: number | null; content: string }[], rubric: "", improvements: "" };
+
+    const text = frqEvalResult;
+
+    // Extract sections by ## headers
+    const summaryMatch = text.match(/## Summary\s*\n([\s\S]*?)(?=\n## |$)/i);
+    const issuesMatch = text.match(/## Issues\s*\n([\s\S]*?)(?=\n## |$)/i);
+    const rubricMatch = text.match(/## Rubric\s*\n([\s\S]*?)(?=\n## |$)/i);
+    const improvementsMatch = text.match(/## Improvements\s*\n([\s\S]*?)(?=\n## |$)/i);
+
+    // Parse individual issues from ### subsections
+    const issuesText = issuesMatch?.[1] || "";
+    const issueBlocks = issuesText.split(/(?=### )/g).filter((b) => b.trim().startsWith("### "));
+    const issues = issueBlocks.map((block) => {
+      const titleMatch = block.match(/### (.+)/);
+      const title = titleMatch?.[1]?.trim() || "Issue";
+      const lineMatch = title.match(/Line\s+(\d+)/i);
+      const line = lineMatch ? parseInt(lineMatch[1], 10) : null;
+      const content = block.replace(/### .+\n?/, "").trim();
+      return { title, line, content };
+    });
+
+    return {
+      summary: summaryMatch?.[1]?.trim() || "",
+      issues,
+      rubric: rubricMatch?.[1]?.trim() || "",
+      improvements: improvementsMatch?.[1]?.trim() || "",
+    };
   })();
+
+  // Extract error line numbers from parsed issues (only for revealed issues)
+  const evalErrorLines = evalSections.issues
+    .slice(0, revealedIssues || evalSections.issues.length)
+    .map((i) => i.line)
+    .filter((l): l is number => l !== null);
 
   return (
     <div className="flex flex-col h-full">
@@ -1864,38 +1900,134 @@ export default function StudyPage({
                 />
               </div>
 
-              {/* Divider with resize handle styling */}
-              <div className="h-1 bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
+              {/* Divider */}
+              <div className="h-px bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
 
-              {/* Bottom half: evaluation feedback */}
+              {/* Bottom half: progressive reveal evaluation */}
               <div className="flex flex-col flex-1 min-h-0">
-                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800">
-                  {frqEvalStreaming ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                  )}
-                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                    {frqEvalStreaming ? "Evaluating..." : "Evaluation"}
-                  </span>
-                </div>
-
                 <div
                   ref={evalScrollRef}
-                  className="flex-1 overflow-y-auto px-4 py-3"
+                  className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
                 >
-                  <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-slate-800 dark:prose-headings:text-slate-200 prose-headings:text-base prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950 prose-pre:text-sm prose-strong:text-slate-800 dark:prose-strong:text-slate-200 prose-li:text-slate-600 dark:prose-li:text-slate-300">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                      {processLatexContent(frqEvalResult)}
-                    </ReactMarkdown>
-                    {frqEvalStreaming && (
-                      <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />
-                    )}
-                  </div>
+                  {/* Streaming indicator */}
+                  {frqEvalStreaming && (
+                    <div className="flex items-center gap-2 text-xs text-blue-500 font-medium">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Analyzing your code...
+                    </div>
+                  )}
+
+                  {/* Summary card — always visible once available */}
+                  {evalSections.summary && (
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800/80 dark:to-slate-800/80 p-3">
+                      <div className="prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-700 dark:prose-p:text-slate-300 prose-p:my-0 prose-strong:text-slate-900 dark:prose-strong:text-slate-100">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.summary}</ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Issue cards — progressive reveal */}
+                  {evalSections.issues.length > 0 && !frqEvalStreaming && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Issues ({revealedIssues} of {evalSections.issues.length} revealed)
+                      </div>
+
+                      {evalSections.issues.map((issue, idx) => {
+                        const isRevealed = idx < revealedIssues;
+                        const isNext = idx === revealedIssues;
+
+                        if (!isRevealed && !isNext) {
+                          // Hidden issues — just show a locked placeholder
+                          return (
+                            <div
+                              key={idx}
+                              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-400 flex items-center gap-2"
+                            >
+                              <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                                {idx + 1}
+                              </span>
+                              <span className="italic">Hidden — reveal previous issues first</span>
+                            </div>
+                          );
+                        }
+
+                        if (isNext && !isRevealed) {
+                          // Next issue to reveal — show as clickable
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => setRevealedIssues(idx + 1)}
+                              className="w-full rounded-lg border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/20 px-3 py-3 text-sm text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-center gap-2"
+                            >
+                              <AlertTriangle className="w-4 h-4" />
+                              Reveal Issue {idx + 1}: {issue.line ? `Line ${issue.line}` : "Click to see"}
+                            </button>
+                          );
+                        }
+
+                        // Revealed issue
+                        return (
+                          <div
+                            key={idx}
+                            className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-900/10 overflow-hidden"
+                          >
+                            <div className="px-3 py-2 bg-red-100/60 dark:bg-red-900/20 flex items-center gap-2 border-b border-red-200 dark:border-red-900/50">
+                              <span className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-[10px] font-bold text-white">
+                                {idx + 1}
+                              </span>
+                              <span className="text-sm font-medium text-red-700 dark:text-red-400">
+                                {issue.title}
+                              </span>
+                            </div>
+                            <div className="px-3 py-2 prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 prose-pre:text-sm">
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                {processLatexContent(issue.content)}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Reveal all button */}
+                      {revealedIssues < evalSections.issues.length && revealedIssues > 0 && (
+                        <button
+                          onClick={() => setRevealedIssues(evalSections.issues.length)}
+                          className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors underline"
+                        >
+                          Show all remaining issues
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Rubric section — collapsed by default, shown after all issues revealed */}
+                  {evalSections.rubric && !frqEvalStreaming && revealedIssues >= evalSections.issues.length && (
+                    <details className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <summary className="px-3 py-2 bg-slate-50 dark:bg-slate-800/50 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                        📋 Rubric Scoring
+                      </summary>
+                      <div className="px-3 py-2 prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-li:text-slate-600 dark:prose-li:text-slate-300">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.rubric}</ReactMarkdown>
+                      </div>
+                    </details>
+                  )}
+
+                  {/* Improvements — shown after rubric */}
+                  {evalSections.improvements && !frqEvalStreaming && revealedIssues >= evalSections.issues.length && (
+                    <div className="rounded-lg border border-green-200 dark:border-green-900/50 bg-green-50/50 dark:bg-green-900/10 p-3">
+                      <div className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider mb-1">
+                        💡 Key Improvements
+                      </div>
+                      <div className="prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-li:text-slate-600 dark:prose-li:text-slate-300">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.improvements}</ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer actions */}
-                {!frqEvalStreaming && (
+                {!frqEvalStreaming && evalSections.summary && (
                   <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-700 flex gap-2">
                     <button
                       onClick={() => { setFrqEvalResult(null); }}
