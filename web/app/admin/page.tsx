@@ -12,6 +12,10 @@ import {
   Shield,
   Copy,
   Check,
+  ToggleLeft,
+  ToggleRight,
+  Zap,
+  TrendingUp,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -21,12 +25,16 @@ interface UserRow {
   username: string;
   display_name: string;
   role: string;
+  enabled: boolean;
   created_at: string | null;
   last_login_at: string | null;
   total_questions: number;
   correct_answers: number;
   topics_assessed: number;
   favorites_count: number;
+  llm_calls: number;
+  llm_tokens: number;
+  llm_cost: number;
 }
 
 interface SessionRow {
@@ -46,7 +54,16 @@ interface Stats {
   total_correct: number;
 }
 
-type Tab = "users" | "sessions" | "overview";
+interface DailyRow {
+  date: string;
+  llm_calls: number;
+  tokens: number;
+  cost: number;
+  answers: number;
+  exams: number;
+}
+
+type Tab = "users" | "sessions" | "overview" | "usage";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -60,6 +77,12 @@ function formatDate(iso: string | null): string {
   });
 }
 
+function formatNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 export default function AdminPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -67,16 +90,17 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [daily, setDaily] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [resetResult, setResetResult] = useState<{ username: string; password: string } | null>(null);
+  const [resetResult, setResetResult] = useState<{
+    username: string;
+    password: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  // Redirect non-admins
   useEffect(() => {
-    if (user && user.role !== "admin") {
-      router.push("/");
-    }
+    if (user && user.role !== "admin") router.push("/");
   }, [user, router]);
 
   const headers = useCallback(() => {
@@ -87,14 +111,16 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [usersRes, sessionsRes, statsRes] = await Promise.all([
+      const [usersRes, sessionsRes, statsRes, dailyRes] = await Promise.all([
         fetch(apiUrl("/api/v1/admin/users"), { headers: headers() }),
         fetch(apiUrl("/api/v1/admin/sessions"), { headers: headers() }),
         fetch(apiUrl("/api/v1/admin/stats"), { headers: headers() }),
+        fetch(apiUrl("/api/v1/admin/usage/daily?days=30"), { headers: headers() }),
       ]);
       if (usersRes.ok) setUsers(await usersRes.json());
       if (sessionsRes.ok) setSessions(await sessionsRes.json());
       if (statsRes.ok) setStats(await statsRes.json());
+      if (dailyRes.ok) setDaily(await dailyRes.json());
     } catch (err) {
       console.error("Failed to load admin data:", err);
     } finally {
@@ -106,6 +132,25 @@ export default function AdminPage() {
     if (user?.role === "admin") loadData();
   }, [user, loadData]);
 
+  async function handleToggleEnabled(userId: string) {
+    try {
+      const res = await fetch(
+        apiUrl(`/api/v1/admin/users/${userId}/toggle-enabled`),
+        { method: "PATCH", headers: headers() }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId ? { ...u, enabled: data.enabled } : u
+          )
+        );
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
   async function handleDelete(userId: string) {
     try {
       const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}`), {
@@ -116,21 +161,28 @@ export default function AdminPage() {
         setUsers((prev) => prev.filter((u) => u.id !== userId));
         setConfirmDelete(null);
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   async function handleResetPassword(userId: string) {
     try {
-      const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}/reset-password`), {
-        method: "POST",
-        headers: headers(),
-      });
+      const res = await fetch(
+        apiUrl(`/api/v1/admin/users/${userId}/reset-password`),
+        { method: "POST", headers: headers() }
+      );
       if (res.ok) {
         const data = await res.json();
-        setResetResult({ username: data.username, password: data.temp_password });
+        setResetResult({
+          username: data.username,
+          password: data.temp_password,
+        });
         setCopied(false);
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   function copyPassword() {
@@ -151,9 +203,14 @@ export default function AdminPage() {
 
   const tabs: { id: Tab; label: string; icon: typeof Users }[] = [
     { id: "users", label: "Users", icon: Users },
+    { id: "usage", label: "Usage", icon: TrendingUp },
     { id: "sessions", label: "Sessions", icon: Activity },
     { id: "overview", label: "Overview", icon: BarChart3 },
   ];
+
+  // Daily chart helpers
+  const maxLLM = Math.max(1, ...daily.map((d) => d.llm_calls));
+  const maxAnswers = Math.max(1, ...daily.map((d) => d.answers));
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -163,7 +220,7 @@ export default function AdminPage() {
           Admin Dashboard
         </h1>
         <p className="text-slate-500 dark:text-slate-400">
-          Manage users, monitor sessions, and view platform stats
+          Manage users, monitor usage, and view platform stats
         </p>
       </div>
 
@@ -200,7 +257,11 @@ export default function AdminPage() {
                   Password Reset
                 </h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  New password for <span className="font-medium text-slate-700 dark:text-slate-300">{resetResult.username}</span>:
+                  New password for{" "}
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    {resetResult.username}
+                  </span>
+                  :
                 </p>
                 <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 p-3 rounded-lg mb-4">
                   <code className="flex-1 text-sm font-mono text-slate-900 dark:text-slate-100">
@@ -218,7 +279,8 @@ export default function AdminPage() {
                   </button>
                 </div>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
-                  Share this password securely. The user&apos;s existing sessions have been invalidated.
+                  Share this password securely. The user&apos;s existing
+                  sessions have been invalidated.
                 </p>
                 <button
                   onClick={() => setResetResult(null)}
@@ -230,46 +292,130 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* Users Tab */}
+          {/* ═══════════ Users Tab ═══════════ */}
           {tab === "users" && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">User</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">Role</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">Joined</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">Last Login</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">Questions</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">Accuracy</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">Actions</th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                      User
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                      Status
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                      Last Login
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                      Questions
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                      LLM Calls
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                      Tokens
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
-                    <tr key={u.id} className="border-b border-slate-100 dark:border-slate-800">
+                    <tr
+                      key={u.id}
+                      className={`border-b border-slate-100 dark:border-slate-800 ${
+                        !u.enabled ? "opacity-50" : ""
+                      }`}
+                    >
                       <td className="py-3">
-                        <div className="font-medium text-slate-900 dark:text-slate-100">{u.display_name}</div>
-                        <div className="text-xs text-slate-400">@{u.username}</div>
+                        <div className="font-medium text-slate-900 dark:text-slate-100">
+                          {u.display_name}
+                        </div>
+                        <div className="text-xs text-slate-400 flex items-center gap-1">
+                          @{u.username}
+                          <span
+                            className={`ml-1 text-[10px] font-medium px-1.5 py-0 rounded-full ${
+                              u.role === "admin"
+                                ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                            }`}
+                          >
+                            {u.role}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          u.role === "admin"
-                            ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                        }`}>
-                          {u.role}
-                        </span>
+                        {u.role !== "admin" ? (
+                          <button
+                            onClick={() => handleToggleEnabled(u.id)}
+                            className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                              u.enabled
+                                ? "text-green-600 hover:text-green-700"
+                                : "text-red-500 hover:text-red-600"
+                            }`}
+                            title={
+                              u.enabled
+                                ? "Click to disable"
+                                : "Click to enable"
+                            }
+                          >
+                            {u.enabled ? (
+                              <ToggleRight className="w-5 h-5" />
+                            ) : (
+                              <ToggleLeft className="w-5 h-5" />
+                            )}
+                            {u.enabled ? "Active" : "Disabled"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-purple-500 font-medium">
+                            Admin
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3 text-slate-500 dark:text-slate-400 text-xs">{formatDate(u.created_at)}</td>
-                      <td className="py-3 text-slate-500 dark:text-slate-400 text-xs">{formatDate(u.last_login_at)}</td>
-                      <td className="py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
-                        {u.total_questions > 0 ? u.total_questions : "—"}
+                      <td className="py-3 text-slate-500 dark:text-slate-400 text-xs">
+                        {formatDate(u.last_login_at)}
                       </td>
                       <td className="py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
-                        {u.total_questions > 0
-                          ? `${Math.round((u.correct_answers / u.total_questions) * 100)}%`
-                          : "—"}
+                        {u.total_questions > 0 ? (
+                          <span>
+                            {u.total_questions}{" "}
+                            <span className="text-xs text-slate-400">
+                              (
+                              {Math.round(
+                                (u.correct_answers / u.total_questions) * 100
+                              )}
+                              %)
+                            </span>
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                        {u.llm_calls > 0 ? (
+                          <span className="flex items-center justify-end gap-1">
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            {u.llm_calls}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-3 text-right tabular-nums text-slate-700 dark:text-slate-300 text-xs">
+                        {u.llm_tokens > 0 ? (
+                          <span>
+                            {formatNum(u.llm_tokens)}
+                            {u.llm_cost > 0 && (
+                              <span className="text-slate-400 ml-1">
+                                ${u.llm_cost.toFixed(2)}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -280,8 +426,8 @@ export default function AdminPage() {
                           >
                             <KeyRound className="w-4 h-4" />
                           </button>
-                          {u.role !== "admin" && (
-                            confirmDelete === u.id ? (
+                          {u.role !== "admin" &&
+                            (confirmDelete === u.id ? (
                               <div className="flex items-center gap-1">
                                 <button
                                   onClick={() => handleDelete(u.id)}
@@ -304,8 +450,7 @@ export default function AdminPage() {
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            )
-                          )}
+                            ))}
                         </div>
                       </td>
                     </tr>
@@ -313,35 +458,191 @@ export default function AdminPage() {
                 </tbody>
               </table>
               {users.length === 0 && (
-                <div className="text-center py-12 text-slate-400">No users found</div>
+                <div className="text-center py-12 text-slate-400">
+                  No users found
+                </div>
               )}
             </div>
           )}
 
-          {/* Sessions Tab */}
+          {/* ═══════════ Usage Tab ═══════════ */}
+          {tab === "usage" && (
+            <div>
+              {/* Daily activity chart */}
+              <div className="mb-8 p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
+                  Daily Activity (Last 30 Days)
+                </h3>
+                {daily.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-8">
+                    No usage data yet
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {/* Chart header */}
+                    <div className="flex items-center gap-4 text-xs text-slate-400 mb-2">
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded bg-blue-500" /> LLM
+                        Calls
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded bg-green-500" />{" "}
+                        Questions
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded bg-purple-500" />{" "}
+                        Exams
+                      </span>
+                    </div>
+                    {/* Bar chart rows */}
+                    <div className="space-y-0.5 max-h-80 overflow-y-auto">
+                      {daily.map((d) => (
+                        <div key={d.date} className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400 w-16 flex-shrink-0 text-right tabular-nums">
+                            {new Date(d.date + "T00:00").toLocaleDateString(
+                              "en-US",
+                              { month: "short", day: "numeric" }
+                            )}
+                          </span>
+                          <div className="flex-1 flex gap-0.5 h-4">
+                            {d.llm_calls > 0 && (
+                              <div
+                                className="bg-blue-500 rounded-sm min-w-[2px]"
+                                style={{
+                                  width: `${(d.llm_calls / maxLLM) * 50}%`,
+                                }}
+                                title={`${d.llm_calls} LLM calls`}
+                              />
+                            )}
+                            {d.answers > 0 && (
+                              <div
+                                className="bg-green-500 rounded-sm min-w-[2px]"
+                                style={{
+                                  width: `${(d.answers / maxAnswers) * 40}%`,
+                                }}
+                                title={`${d.answers} questions`}
+                              />
+                            )}
+                            {d.exams > 0 && (
+                              <div
+                                className="bg-purple-500 rounded-sm min-w-[4px]"
+                                style={{ width: `${d.exams * 3}%` }}
+                                title={`${d.exams} exams`}
+                              />
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 w-20 flex-shrink-0 tabular-nums">
+                            {d.llm_calls > 0 && `${d.llm_calls} calls`}
+                            {d.cost > 0 && ` · $${d.cost.toFixed(2)}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Top users by LLM usage */}
+              <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
+                  Top Users by LLM Usage
+                </h3>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
+                      <th className="pb-2 font-semibold text-slate-500 dark:text-slate-400">
+                        User
+                      </th>
+                      <th className="pb-2 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                        Calls
+                      </th>
+                      <th className="pb-2 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                        Tokens
+                      </th>
+                      <th className="pb-2 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                        Cost
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users
+                      .filter((u) => u.llm_calls > 0)
+                      .sort((a, b) => b.llm_calls - a.llm_calls)
+                      .slice(0, 10)
+                      .map((u) => (
+                        <tr
+                          key={u.id}
+                          className="border-b border-slate-100 dark:border-slate-800"
+                        >
+                          <td className="py-2">
+                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                              {u.display_name}
+                            </span>
+                            <span className="text-xs text-slate-400 ml-1">
+                              @{u.username}
+                            </span>
+                          </td>
+                          <td className="py-2 text-right tabular-nums">
+                            {u.llm_calls}
+                          </td>
+                          <td className="py-2 text-right tabular-nums text-xs">
+                            {formatNum(u.llm_tokens)}
+                          </td>
+                          <td className="py-2 text-right tabular-nums text-xs">
+                            ${u.llm_cost.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {users.filter((u) => u.llm_calls > 0).length === 0 && (
+                  <p className="text-sm text-slate-400 text-center py-8">
+                    No LLM usage recorded yet
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════ Sessions Tab ═══════════ */}
           {tab === "sessions" && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">User</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">Role</th>
-                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">Expires In</th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                      User
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                      Role
+                    </th>
+                    <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                      Expires In
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {sessions.map((s, i) => (
-                    <tr key={i} className="border-b border-slate-100 dark:border-slate-800">
+                    <tr
+                      key={i}
+                      className="border-b border-slate-100 dark:border-slate-800"
+                    >
                       <td className="py-3">
-                        <div className="font-medium text-slate-900 dark:text-slate-100">{s.display_name}</div>
-                        <div className="text-xs text-slate-400">@{s.username}</div>
+                        <div className="font-medium text-slate-900 dark:text-slate-100">
+                          {s.display_name}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          @{s.username}
+                        </div>
                       </td>
                       <td className="py-3">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          s.role === "admin"
-                            ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                        }`}>
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            s.role === "admin"
+                              ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                          }`}
+                        >
                           {s.role}
                         </span>
                       </td>
@@ -353,19 +654,56 @@ export default function AdminPage() {
                 </tbody>
               </table>
               {sessions.length === 0 && (
-                <div className="text-center py-12 text-slate-400">No active sessions</div>
+                <div className="text-center py-12 text-slate-400">
+                  No active sessions
+                </div>
               )}
             </div>
           )}
 
-          {/* Overview Tab */}
+          {/* ═══════════ Overview Tab ═══════════ */}
           {tab === "overview" && stats && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: "Total Users", value: stats.total_users, sub: `${stats.students} students, ${stats.admins} admins` },
+                {
+                  label: "Total Users",
+                  value: stats.total_users,
+                  sub: `${stats.students} students, ${stats.admins} admins`,
+                },
                 { label: "Active Sessions", value: stats.active_sessions },
                 { label: "Questions Answered", value: stats.total_questions },
-                { label: "Overall Accuracy", value: stats.total_questions > 0 ? `${Math.round((stats.total_correct / stats.total_questions) * 100)}%` : "—" },
+                {
+                  label: "Overall Accuracy",
+                  value:
+                    stats.total_questions > 0
+                      ? `${Math.round((stats.total_correct / stats.total_questions) * 100)}%`
+                      : "—",
+                },
+                {
+                  label: "LLM Calls Today",
+                  value:
+                    daily.length > 0
+                      ? daily[daily.length - 1].llm_calls
+                      : 0,
+                },
+                {
+                  label: "Tokens Today",
+                  value:
+                    daily.length > 0
+                      ? formatNum(daily[daily.length - 1].tokens)
+                      : "0",
+                },
+                {
+                  label: "Cost Today",
+                  value:
+                    daily.length > 0
+                      ? `$${daily[daily.length - 1].cost.toFixed(2)}`
+                      : "$0",
+                },
+                {
+                  label: "Exams Taken",
+                  value: daily.reduce((s, d) => s + d.exams, 0),
+                },
               ].map((card) => (
                 <div
                   key={card.label}
@@ -374,9 +712,13 @@ export default function AdminPage() {
                   <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
                     {card.value}
                   </div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400">{card.label}</div>
+                  <div className="text-sm text-slate-500 dark:text-slate-400">
+                    {card.label}
+                  </div>
                   {card.sub && (
-                    <div className="text-xs text-slate-400 mt-1">{card.sub}</div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {card.sub}
+                    </div>
                   )}
                 </div>
               ))}

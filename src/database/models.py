@@ -126,6 +126,7 @@ class User(Base):
     password_hash = Column(String(200), nullable=False)
     display_name = Column(String(100), nullable=False)
     role = Column(String(20), nullable=False, default="student")  # student | admin
+    enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=utcnow)
     last_login_at = Column(DateTime, nullable=True)
 
@@ -254,3 +255,18 @@ class ExamQuestion(Base):
     flagged = Column(Boolean, default=False)
 
     exam = relationship("MockExam", back_populates="questions")
+
+
+class LLMUsageLog(Base):
+    """Tracks individual LLM API calls per user for cost/usage monitoring."""
+
+    __tablename__ = "llm_usage_log"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    endpoint = Column(String(50), nullable=False)  # tutor | exam | assessment | content
+    model = Column(String(100), nullable=True)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    estimated_cost = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=utcnow)

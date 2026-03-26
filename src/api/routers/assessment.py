@@ -488,6 +488,11 @@ async def generate_additional_questions(
             else:
                 logger.warning(f"Additional MCQ {i+1} not valid JSON")
                 questions.append({"raw_text": raw})
+            try:
+                from src.api.middleware.llm_tracking import log_llm_usage
+                log_llm_usage(user_id=user["user_id"], endpoint="assessment", response_text=raw)
+            except Exception:
+                pass
 
         return {"questions": questions, "count": len(questions)}
     finally:

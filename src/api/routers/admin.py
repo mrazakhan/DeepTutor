@@ -6,6 +6,7 @@ All endpoints require admin role.
 import json
 import secrets
 import time
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from sqlalchemy import func
@@ -14,6 +15,8 @@ from src.database.engine import get_db
 from src.database.models import (
     AssessmentAnswer,
     Course,
+    LLMUsageLog,
+    MockExam,
     Topic,
     TopicAssessment,
     TopicContent,
@@ -75,17 +78,40 @@ async def list_users(request: Request):
                 .scalar()
             ) or 0
 
+            # LLM usage stats
+            llm_calls = (
+                db.query(func.count(LLMUsageLog.id))
+                .filter(LLMUsageLog.user_id == u.id)
+                .scalar()
+            ) or 0
+
+            llm_tokens = (
+                db.query(func.sum(LLMUsageLog.prompt_tokens + LLMUsageLog.completion_tokens))
+                .filter(LLMUsageLog.user_id == u.id)
+                .scalar()
+            ) or 0
+
+            llm_cost = (
+                db.query(func.sum(LLMUsageLog.estimated_cost))
+                .filter(LLMUsageLog.user_id == u.id)
+                .scalar()
+            ) or 0.0
+
             result.append({
                 "id": u.id,
                 "username": u.username,
                 "display_name": u.display_name,
                 "role": u.role,
+                "enabled": getattr(u, "enabled", True),
                 "created_at": u.created_at.isoformat() if u.created_at else None,
                 "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
                 "total_questions": total_questions,
                 "correct_answers": correct_answers,
                 "topics_assessed": topics_assessed,
                 "favorites_count": favorites_count,
+                "llm_calls": llm_calls,
+                "llm_tokens": llm_tokens,
+                "llm_cost": round(llm_cost, 4),
             })
 
         return result
@@ -210,6 +236,146 @@ async def get_stats(request: Request):
             "total_questions": total_questions,
             "total_correct": total_correct,
         }
+    finally:
+        db.close()
+
+
+@router.patch("/users/{user_id}/toggle-enabled")
+async def toggle_enabled(user_id: str, request: Request):
+    """Enable or disable a user account."""
+    admin = _require_admin(request)
+
+    if admin["user_id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot disable your own account")
+
+    db = get_db()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        new_enabled = not getattr(user, "enabled", True)
+        user.enabled = new_enabled
+        db.commit()
+
+        # If disabling, invalidate all tokens for this user
+        if not new_enabled:
+            from src.api.routers.auth import _tokens
+            tokens_to_remove = [
+                t for t, s in _tokens.items() if s.get("user_id") == user_id
+            ]
+            for t in tokens_to_remove:
+                del _tokens[t]
+
+        return {"user_id": user_id, "username": user.username, "enabled": new_enabled}
+    finally:
+        db.close()
+
+
+@router.get("/usage/summary")
+async def usage_summary(request: Request):
+    """Per-user LLM usage totals."""
+    _require_admin(request)
+
+    db = get_db()
+    try:
+        rows = (
+            db.query(
+                LLMUsageLog.user_id,
+                func.count(LLMUsageLog.id).label("calls"),
+                func.sum(LLMUsageLog.prompt_tokens + LLMUsageLog.completion_tokens).label("tokens"),
+                func.sum(LLMUsageLog.estimated_cost).label("cost"),
+            )
+            .group_by(LLMUsageLog.user_id)
+            .order_by(func.count(LLMUsageLog.id).desc())
+            .all()
+        )
+
+        # Map user_ids to usernames
+        user_ids = [r[0] for r in rows if r[0]]
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+        result = []
+        for uid, calls, tokens, cost in rows:
+            u = users.get(uid)
+            result.append({
+                "user_id": uid,
+                "username": u.username if u else "system",
+                "display_name": u.display_name if u else "System",
+                "calls": calls,
+                "tokens": tokens or 0,
+                "cost": round(cost or 0, 4),
+            })
+        return result
+    finally:
+        db.close()
+
+
+@router.get("/usage/daily")
+async def daily_usage(request: Request, days: int = 30):
+    """Daily aggregated stats for last N days."""
+    _require_admin(request)
+
+    from datetime import timedelta
+    from sqlalchemy import cast, Date
+
+    db = get_db()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # LLM calls per day
+        llm_daily = (
+            db.query(
+                cast(LLMUsageLog.created_at, Date).label("day"),
+                func.count(LLMUsageLog.id).label("calls"),
+                func.sum(LLMUsageLog.prompt_tokens + LLMUsageLog.completion_tokens).label("tokens"),
+                func.sum(LLMUsageLog.estimated_cost).label("cost"),
+            )
+            .filter(LLMUsageLog.created_at >= cutoff)
+            .group_by(cast(LLMUsageLog.created_at, Date))
+            .order_by(cast(LLMUsageLog.created_at, Date))
+            .all()
+        )
+
+        # Questions answered per day
+        qa_daily = (
+            db.query(
+                cast(AssessmentAnswer.created_at, Date).label("day"),
+                func.count(AssessmentAnswer.id).label("answers"),
+            )
+            .filter(AssessmentAnswer.created_at >= cutoff)
+            .group_by(cast(AssessmentAnswer.created_at, Date))
+            .all()
+        )
+
+        # Exams per day
+        exam_daily = (
+            db.query(
+                cast(MockExam.created_at, Date).label("day"),
+                func.count(MockExam.id).label("exams"),
+            )
+            .filter(MockExam.created_at >= cutoff)
+            .group_by(cast(MockExam.created_at, Date))
+            .all()
+        )
+
+        # Merge into a single daily series
+        from collections import defaultdict
+        daily = defaultdict(lambda: {"llm_calls": 0, "tokens": 0, "cost": 0, "answers": 0, "exams": 0})
+
+        for day, calls, tokens, cost in llm_daily:
+            d = str(day)
+            daily[d]["llm_calls"] = calls
+            daily[d]["tokens"] = tokens or 0
+            daily[d]["cost"] = round(cost or 0, 4)
+
+        for day, answers in qa_daily:
+            daily[str(day)]["answers"] = answers
+
+        for day, exams in exam_daily:
+            daily[str(day)]["exams"] = exams
+
+        return [{"date": d, **v} for d, v in sorted(daily.items())]
     finally:
         db.close()
 

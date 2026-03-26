@@ -120,6 +120,8 @@ async def login(body: LoginRequest):
         user = db.query(User).filter(User.username == body.username).first()
         if not user or user.password_hash != _hash_password(body.password):
             raise HTTPException(status_code=401, detail="Invalid username or password")
+        if not getattr(user, "enabled", True):
+            raise HTTPException(status_code=403, detail="Account disabled. Contact your administrator.")
 
         # Track last login time
         user.last_login_at = datetime.now(timezone.utc)
