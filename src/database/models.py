@@ -206,3 +206,51 @@ class ProficiencyDimension(Base):
     total = Column(Integer, default=0)
     proficiency = Column(Integer, default=0)  # 0-100
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class MockExam(Base):
+    """A timed mock AP exam session."""
+
+    __tablename__ = "mock_exams"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(String, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(20), nullable=False, default="generating")  # generating|ready|in_progress|completed|timed_out
+    created_at = Column(DateTime, default=utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    time_limit_minutes = Column(Integer, nullable=False)
+    time_remaining_seconds = Column(Integer, nullable=True)
+    current_section = Column(Integer, default=0)
+    mcq_score = Column(Float, nullable=True)
+    frq_score = Column(Float, nullable=True)
+    total_score = Column(Float, nullable=True)
+    sections = Column(Text, nullable=False)  # JSON: [{name, type, count, minutes}]
+
+    user = relationship("User")
+    course = relationship("Course")
+    questions = relationship("ExamQuestion", back_populates="exam", cascade="all, delete-orphan",
+                             order_by="ExamQuestion.section_index, ExamQuestion.question_index")
+
+
+class ExamQuestion(Base):
+    """A single question within a mock exam."""
+
+    __tablename__ = "exam_questions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    exam_id = Column(String, ForeignKey("mock_exams.id", ondelete="CASCADE"), nullable=False)
+    section_index = Column(Integer, nullable=False)
+    question_index = Column(Integer, nullable=False)
+    question_type = Column(String(10), nullable=False)  # mcq | frq
+    question_data = Column(Text, nullable=False)  # JSON: full question object
+    student_answer = Column(Text, nullable=True)
+    is_correct = Column(Boolean, nullable=True)
+    score = Column(Float, nullable=True)
+    max_score = Column(Float, nullable=False, default=1.0)
+    evaluation = Column(Text, nullable=True)  # JSON: LLM evaluation for FRQs
+    answered_at = Column(DateTime, nullable=True)
+    flagged = Column(Boolean, default=False)
+
+    exam = relationship("MockExam", back_populates="questions")
