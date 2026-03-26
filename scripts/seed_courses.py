@@ -36,11 +36,18 @@ AP_COURSES = [
             ],
             "frq_types": [
                 "Methods and Control Structures",
-                "Class Design",
+                "Class Writing",
                 "Data Analysis with ArrayList",
                 "2D Array"
             ],
             "weight": {"mcq": 55, "frq": 45},
+            "unit_weights": {
+                "1": {"min": 15, "max": 25},
+                "2": {"min": 25, "max": 35},
+                "3": {"min": 10, "max": 18},
+                "4": {"min": 30, "max": 40}
+            },
+            "score_cutoffs": {"5": 77, "4": 59, "3": 46, "2": 33},
             "reference": "Java Quick Reference",
             "digital": True,
             "platform": "Bluebook"
