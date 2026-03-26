@@ -231,18 +231,12 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Progress bar */}
+            {/* Progress bar — shows completion (topics assessed / total) */}
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                 {stats.assessed > 0 ? (
                   <div
-                    className={`h-full rounded-full transition-all ${
-                      stats.proficiency >= 80
-                        ? "bg-emerald-500"
-                        : stats.proficiency >= 50
-                        ? "bg-amber-500"
-                        : "bg-red-400"
-                    }`}
+                    className="h-full rounded-full transition-all bg-blue-500"
                     style={{ width: `${progressPct}%` }}
                   />
                 ) : (
@@ -250,7 +244,7 @@ export default function HomePage() {
                 )}
               </div>
               <span className="text-xs text-slate-400 dark:text-slate-500 w-8 text-right tabular-nums">
-                {stats.assessed > 0 ? `${stats.proficiency}%` : "—"}
+                {stats.assessed > 0 ? `${progressPct}%` : "—"}
               </span>
             </div>
           </div>

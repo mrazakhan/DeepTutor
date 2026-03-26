@@ -307,14 +307,14 @@ export default function CourseDetailPage({
         )}
         {Object.keys(topicProgress).length > 0 && (() => {
           const assessed = Object.values(topicProgress).filter(p => p.total_questions > 0);
-          const avgProf = assessed.length > 0
-            ? Math.round(assessed.reduce((sum, p) => sum + p.proficiency, 0) / assessed.length)
+          const completionPct = totalTopics > 0
+            ? Math.round((assessed.length / totalTopics) * 100)
             : 0;
           return (
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-purple-500" />
               <span className="text-sm text-slate-600 dark:text-slate-300">
-                {t("Progress")}: <strong>{avgProf}%</strong> ({assessed.length}/{totalTopics} {t("assessed")})
+                {t("Progress")}: <strong>{completionPct}%</strong> ({assessed.length}/{totalTopics} {t("assessed")})
               </span>
             </div>
           );
@@ -324,11 +324,12 @@ export default function CourseDetailPage({
       {/* Overall Course Progress Card */}
       {user && Object.keys(topicProgress).length > 0 && (() => {
         const assessed = Object.values(topicProgress).filter(p => p.total_questions > 0);
-        const avgProf = assessed.length > 0
-          ? Math.round(assessed.reduce((sum, p) => sum + p.proficiency, 0) / assessed.length)
+        const completionPct = totalTopics > 0
+          ? Math.round((assessed.length / totalTopics) * 100)
           : 0;
         const totalCorrect = assessed.reduce((s, p) => s + p.correct_answers, 0);
         const totalQs = assessed.reduce((s, p) => s + p.total_questions, 0);
+        const accuracy = totalQs > 0 ? Math.round((totalCorrect / totalQs) * 100) : 0;
         const MIN_FOR_MASTERY = 5;
         const mastered = assessed.filter(p => p.proficiency >= 80 && p.total_questions >= MIN_FOR_MASTERY).length;
         const developing = assessed.filter(p => (p.proficiency >= 50 && p.proficiency < 80) || (p.proficiency >= 80 && p.total_questions < MIN_FOR_MASTERY)).length;
@@ -340,19 +341,20 @@ export default function CourseDetailPage({
                 <TrendingUp className="w-4 h-4 text-blue-500" />
                 {t("Your Progress")}
               </h2>
-              <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{avgProf}%</span>
+              <div className="text-right">
+                <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{completionPct}%</span>
+                <div className="text-[10px] text-slate-400">{assessed.length}/{totalTopics} topics</div>
+              </div>
             </div>
-            {/* Overall progress bar */}
+            {/* Completion progress bar */}
             <div className="h-3 bg-white/60 dark:bg-slate-800/60 rounded-full overflow-hidden mb-3">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  avgProf >= 80 ? "bg-emerald-500" : avgProf >= 50 ? "bg-amber-500" : "bg-red-500"
-                }`}
-                style={{ width: `${avgProf}%` }}
+                className="h-full rounded-full transition-all duration-500 bg-blue-500"
+                style={{ width: `${completionPct}%` }}
               />
             </div>
             <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
-              <span>{totalCorrect}/{totalQs} questions correct</span>
+              <span>{totalCorrect}/{totalQs} questions correct ({accuracy}% accuracy)</span>
               <span className="text-emerald-600 dark:text-emerald-400">◉ {mastered} mastered</span>
               <span className="text-amber-600 dark:text-amber-400">◉ {developing} developing</span>
               {needsWork > 0 && <span className="text-red-600 dark:text-red-400">✗ {needsWork} needs work</span>}
