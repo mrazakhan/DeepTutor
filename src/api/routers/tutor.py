@@ -281,6 +281,13 @@ async def websocket_tutor(websocket: WebSocket):
 
                 logger.info(f"Tutor completed: session={session_id}, {len(full_response)} chars")
 
+                # Log LLM usage
+                try:
+                    from src.api.middleware.llm_tracking import log_llm_usage
+                    log_llm_usage(user_id=user_id, endpoint="tutor", response_text=full_response)
+                except Exception:
+                    pass
+
             except Exception as e:
                 logger.error(f"Tutor processing error: {e}")
                 await websocket.send_json({"type": "error", "message": str(e)})

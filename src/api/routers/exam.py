@@ -299,6 +299,11 @@ async def _generate_exam_questions(
                         logger.info(f"Exam {exam_id}: MCQ {qi+1}/{total_mcq} generated")
                     else:
                         logger.warning(f"Exam {exam_id}: MCQ {qi+1} invalid JSON")
+                    try:
+                        from src.api.middleware.llm_tracking import log_llm_usage
+                        log_llm_usage(user_id=None, endpoint="exam", response_text=raw)
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.error(f"Exam {exam_id}: MCQ {qi+1} error: {e}")
 
@@ -330,6 +335,11 @@ async def _generate_exam_questions(
                         logger.info(f"Exam {exam_id}: FRQ {qi+1}/{total_frq} generated ({frq_type})")
                     else:
                         logger.warning(f"Exam {exam_id}: FRQ {qi+1} invalid JSON")
+                    try:
+                        from src.api.middleware.llm_tracking import log_llm_usage
+                        log_llm_usage(user_id=None, endpoint="exam", response_text=raw)
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.error(f"Exam {exam_id}: FRQ {qi+1} error: {e}")
 
@@ -685,6 +695,11 @@ async def _evaluate_frqs(exam_id: str, frq_question_ids: list, course):
 
                 q.is_correct = q.score and q.score > 0
                 logger.info(f"Exam {exam_id}: FRQ {qid} scored {q.score}/{q.max_score}")
+                try:
+                    from src.api.middleware.llm_tracking import log_llm_usage
+                    log_llm_usage(user_id=None, endpoint="exam", response_text=response)
+                except Exception:
+                    pass
 
             except Exception as e:
                 logger.error(f"Exam {exam_id}: FRQ eval error: {e}")
