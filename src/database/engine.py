@@ -40,6 +40,7 @@ def init_db():
     # Migrate existing databases: add new columns if missing
     _migrate_columns = [
         ("users", "last_login_at", "DATETIME"),
+        ("users", "email", "VARCHAR(200)"),
         ("users", "enabled", "BOOLEAN DEFAULT 1"),
         ("topic_content", "golden_solutions", "TEXT"),
         ("topic_content", "extra_frqs", "TEXT"),

@@ -125,6 +125,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     password_hash = Column(String(200), nullable=False)
     display_name = Column(String(100), nullable=False)
+    email = Column(String(200), nullable=True)
     role = Column(String(20), nullable=False, default="student")  # student | admin
     enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=utcnow)

@@ -24,6 +24,7 @@ interface UserRow {
   id: string;
   username: string;
   display_name: string;
+  email: string | null;
   role: string;
   enabled: boolean;
   created_at: string | null;
@@ -334,7 +335,7 @@ export default function AdminPage() {
                           {u.display_name}
                         </div>
                         <div className="text-xs text-slate-400 flex items-center gap-1">
-                          @{u.username}
+                          @{u.username}{u.email && <span className="ml-1 text-slate-300 dark:text-slate-500">· {u.email}</span>}
                           <span
                             className={`ml-1 text-[10px] font-medium px-1.5 py-0 rounded-full ${
                               u.role === "admin"

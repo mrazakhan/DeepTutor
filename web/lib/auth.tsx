@@ -92,11 +92,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   }
 
-  async function register(username: string, password: string, displayName: string) {
+  async function register(username: string, password: string, displayName: string, email?: string) {
     const res = await fetch(apiUrl("/api/v1/auth/register"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, display_name: displayName }),
+      body: JSON.stringify({ username, password, display_name: displayName, email: email || "" }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
