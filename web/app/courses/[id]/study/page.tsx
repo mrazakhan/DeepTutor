@@ -23,6 +23,9 @@ import {
   Sparkles,
   Upload,
   Paperclip,
+  X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
@@ -242,6 +245,11 @@ export default function StudyPage({
   const [goldenSolutions, setGoldenSolutions] = useState<GoldenSolution[] | null>(null);
   const [extraFrqs, setExtraFrqs] = useState<FRQuestion[] | null>(null);
   const [showGoldenSolution, setShowGoldenSolution] = useState(false);
+  // FRQ evaluation overlay state
+  const [frqEvalResult, setFrqEvalResult] = useState<string | null>(null);
+  const [frqEvalStreaming, setFrqEvalStreaming] = useState(false);
+  const frqEvalWsRef = useRef<WebSocket | null>(null);
+  const evalScrollRef = useRef<HTMLDivElement>(null);
   // Inline code editor for non-preloaded FRQ responses
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [inlineEditorCode, setInlineEditorCode] = useState("");
@@ -299,6 +307,13 @@ export default function StudyPage({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-scroll evaluation overlay as content streams
+  useEffect(() => {
+    if (frqEvalResult && evalScrollRef.current) {
+      evalScrollRef.current.scrollTop = evalScrollRef.current.scrollHeight;
+    }
+  }, [frqEvalResult]);
 
   // Load course/topic info
   useEffect(() => {
@@ -666,7 +681,7 @@ export default function StudyPage({
 
   function handleEvaluateFRQ() {
     if (!activeFRQ || !frqAnswer.trim()) return;
-    // Build evaluation prompt and send to TutorAgent via WebSocket
+
     const evalPrompt = [
       "**Evaluate my Java code for this FRQ.**\n",
       `**Question:** ${activeFRQ.question}\n`,
@@ -677,9 +692,58 @@ export default function StudyPage({
       `3. Score my solution against this rubric:\n${activeFRQ.rubric || "Standard AP FRQ rubric"}`,
       "4. End with an overall score (e.g., 5/9 points) and key areas to improve.",
     ].join("\n");
-    setShowFRQSolution(true);
-    setActiveFRQ(null);
-    sendMessage(evalPrompt);
+
+    // Stream evaluation into overlay panel (not chat)
+    setFrqEvalResult("");
+    setFrqEvalStreaming(true);
+
+    if (frqEvalWsRef.current) frqEvalWsRef.current.close();
+
+    const ws = new WebSocket(wsUrl("/api/v1/tutor/chat"));
+    frqEvalWsRef.current = ws;
+
+    let result = "";
+
+    ws.onopen = () => {
+      const history = messages.map((msg) => ({ role: msg.role, content: msg.content }));
+      ws.send(JSON.stringify({
+        message: evalPrompt,
+        session_id: sessionIdRef.current,
+        history,
+        course_id: courseId,
+        topic_id: topicId || null,
+        user_id: user?.id || null,
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "session") {
+        sessionIdRef.current = data.session_id;
+        setSessionId(data.session_id);
+      } else if (data.type === "stream") {
+        result += data.content;
+        setFrqEvalResult(result);
+      } else if (data.type === "result") {
+        setFrqEvalResult(data.content);
+        setFrqEvalStreaming(false);
+        ws.close();
+      } else if (data.type === "error") {
+        setFrqEvalResult(`Error: ${data.message}`);
+        setFrqEvalStreaming(false);
+        ws.close();
+      }
+    };
+
+    ws.onerror = () => {
+      setFrqEvalResult("Connection error. Please try again.");
+      setFrqEvalStreaming(false);
+    };
+
+    ws.onclose = () => {
+      if (frqEvalWsRef.current === ws) frqEvalWsRef.current = null;
+      setFrqEvalStreaming(false);
+    };
   }
 
   function handleNextFRQ() {
@@ -1745,7 +1809,7 @@ export default function StudyPage({
 
       {/* Right-side Code Editor Panel */}
       {showEditorPanel && (
-        <div className="w-1/2 flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900">
+        <div className="w-1/2 flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900 relative">
           {/* Editor header */}
           <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
             <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
@@ -1784,10 +1848,16 @@ export default function StudyPage({
               <>
                 <button
                   onClick={handleEvaluateFRQ}
-                  disabled={!frqAnswer.trim() || isLoading}
+                  disabled={!frqAnswer.trim() || frqEvalStreaming}
                   className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  {t("Evaluate My Code")}
+                  {frqEvalStreaming ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Evaluating...
+                    </span>
+                  ) : (
+                    t("Evaluate My Code")
+                  )}
                 </button>
                 <button
                   onClick={handleSubmitFRQ}
@@ -1820,6 +1890,63 @@ export default function StudyPage({
               </>
             )}
           </div>
+
+          {/* ── FRQ Evaluation Overlay ── */}
+          {frqEvalResult !== null && (
+            <div className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-slate-900">
+              {/* Overlay header */}
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800">
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                  {frqEvalStreaming ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  )}
+                  {frqEvalStreaming ? "Evaluating your code..." : "Evaluation Complete"}
+                </span>
+                <button
+                  onClick={() => { setFrqEvalResult(null); setFrqEvalStreaming(false); }}
+                  className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                  title="Close evaluation"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Scrollable evaluation content */}
+              <div
+                ref={evalScrollRef}
+                className="flex-1 overflow-y-auto px-5 py-4"
+              >
+                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-slate-800 dark:prose-headings:text-slate-200 prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950 prose-pre:text-sm prose-strong:text-slate-800 dark:prose-strong:text-slate-200 prose-li:text-slate-600 dark:prose-li:text-slate-300">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                    {processLatexContent(frqEvalResult)}
+                  </ReactMarkdown>
+                  {frqEvalStreaming && (
+                    <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />
+                  )}
+                </div>
+              </div>
+
+              {/* Overlay footer */}
+              {!frqEvalStreaming && (
+                <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex gap-2">
+                  <button
+                    onClick={() => { setFrqEvalResult(null); }}
+                    className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+                  >
+                    ← Back to Editor
+                  </button>
+                  <button
+                    onClick={() => { setFrqEvalResult(null); handleNextFRQ(); }}
+                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                  >
+                    Next FRQ →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       </div>{/* end flex row */}
