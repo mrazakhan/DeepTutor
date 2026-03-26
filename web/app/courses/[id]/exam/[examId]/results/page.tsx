@@ -27,6 +27,8 @@ interface ExamResult {
   sections: { name: string; type: string; count: number; minutes: number }[];
   mcq_score: number | null;
   frq_score: number | null;
+  ap_score: number | null;
+  exam_type: string;
   total_score: number | null;
   started_at: string | null;
   completed_at: string | null;
@@ -102,10 +104,8 @@ export default function ExamResultsPage({
   const frqEvaluated = frqQuestions.filter((q) => q.evaluation).length;
   const frqPending = frqQuestions.length - frqEvaluated;
 
-  // AP score estimation (simplified)
-  const totalPct = result.total_score || 0;
-  const apScore =
-    totalPct >= 80 ? 5 : totalPct >= 65 ? 4 : totalPct >= 50 ? 3 : totalPct >= 35 ? 2 : 1;
+  // AP score from API (computed server-side using official cutoffs)
+  const apScore = result.ap_score || 1;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">

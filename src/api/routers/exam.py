@@ -138,6 +138,7 @@ Return ONLY valid JSON (no markdown fences):
 class GenerateExamRequest(BaseModel):
     mcq_count: int | None = None  # Override default from exam_format
     frq_count: int | None = None
+    exam_type: str = "practice"  # "practice" or "final"
 
 
 class AnswerRequest(BaseModel):
@@ -156,12 +157,26 @@ class SubmitExamRequest(BaseModel):
 async def generate_exam(course_id: str, request: Request, body: GenerateExamRequest | None = None):
     """Generate a new mock exam with fresh questions."""
     user = _require_user(request)
+    exam_type = (body.exam_type if body else "practice") or "practice"
 
     db = get_db()
     try:
         course = db.query(Course).filter(Course.id == course_id).first()
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
+
+        # Final exams: only admins can generate, check if one already exists
+        if exam_type == "final":
+            if user.get("role") != "admin":
+                raise HTTPException(status_code=403, detail="Only admins can generate final exams")
+            existing_final = (
+                db.query(MockExam)
+                .filter(MockExam.course_id == course_id, MockExam.exam_type == "final",
+                        MockExam.shared_exam_id.is_(None))
+                .first()
+            )
+            if existing_final:
+                raise HTTPException(status_code=409, detail="Final exam already exists for this course")
 
         # Parse exam format
         exam_format = json.loads(course.exam_format) if course.exam_format else None
@@ -170,6 +185,7 @@ async def generate_exam(course_id: str, request: Request, body: GenerateExamRequ
 
         sections = exam_format["sections"]
         frq_types = exam_format.get("frq_types", [])
+        unit_weights = exam_format.get("unit_weights", {})
         total_minutes = sum(s.get("minutes", 0) for s in sections)
 
         # Determine question counts
@@ -195,6 +211,7 @@ async def generate_exam(course_id: str, request: Request, body: GenerateExamRequ
         exam = MockExam(
             user_id=user["user_id"],
             course_id=course_id,
+            exam_type=exam_type,
             status="generating",
             time_limit_minutes=total_minutes,
             sections=json.dumps(exam_sections),
@@ -203,31 +220,35 @@ async def generate_exam(course_id: str, request: Request, body: GenerateExamRequ
         db.commit()
         exam_id = exam.id
 
-        # Get all topics with preloaded content for examples
-        topics_with_content = []
+        # Get all topics with preloaded content, grouped by unit
+        topics_by_unit: dict[int, list] = {}
         for unit in course.units:
+            unit_topics = []
             for topic in unit.topics:
                 tc = db.query(TopicContent).filter(TopicContent.topic_id == topic.id).first()
                 if tc:
                     content = json.loads(tc.content)
-                    topics_with_content.append({
+                    unit_topics.append({
                         "topic": topic,
                         "unit": unit,
                         "mcqs": content.get("practice_mcq", []),
                         "frqs": content.get("practice_frq", []),
                     })
+            if unit_topics:
+                topics_by_unit[unit.unit_number] = unit_topics
 
         db.close()
 
         # Generate questions in background
         asyncio.create_task(_generate_exam_questions(
-            exam_id, course, topics_with_content, exam_sections,
-            total_mcq, total_frq, frq_types
+            exam_id, course, topics_by_unit, exam_sections,
+            total_mcq, total_frq, frq_types, unit_weights, exam_format
         ))
 
         return {
             "exam_id": exam_id,
             "status": "generating",
+            "exam_type": exam_type,
             "total_mcq": total_mcq,
             "total_frq": total_frq,
             "total_minutes": total_minutes,
@@ -238,9 +259,105 @@ async def generate_exam(course_id: str, request: Request, body: GenerateExamRequ
         db.close()
 
 
+@router.post("/{course_id}/exams/start-final")
+async def start_final_exam(course_id: str, request: Request):
+    """Start the final exam for a student — copies questions from the admin template."""
+    user = _require_user(request)
+
+    db = get_db()
+    try:
+        # Find the shared final exam template
+        template = (
+            db.query(MockExam)
+            .filter(MockExam.course_id == course_id, MockExam.exam_type == "final",
+                    MockExam.shared_exam_id.is_(None),
+                    MockExam.status.in_(["ready", "completed"]))
+            .first()
+        )
+        if not template:
+            raise HTTPException(status_code=404, detail="No final exam available for this course")
+
+        # Check if student already has a final attempt
+        existing = (
+            db.query(MockExam)
+            .filter(MockExam.user_id == user["user_id"], MockExam.course_id == course_id,
+                    MockExam.exam_type == "final", MockExam.shared_exam_id == template.id)
+            .first()
+        )
+        if existing:
+            return {"exam_id": existing.id, "status": existing.status, "already_exists": True}
+
+        # Create student's personal copy
+        student_exam = MockExam(
+            user_id=user["user_id"],
+            course_id=course_id,
+            exam_type="final",
+            shared_exam_id=template.id,
+            status="ready",
+            time_limit_minutes=template.time_limit_minutes,
+            sections=template.sections,
+        )
+        db.add(student_exam)
+        db.flush()
+
+        # Copy all questions
+        for q in template.questions:
+            copy = ExamQuestion(
+                exam_id=student_exam.id,
+                section_index=q.section_index,
+                question_index=q.question_index,
+                question_type=q.question_type,
+                question_data=q.question_data,
+                max_score=q.max_score,
+            )
+            db.add(copy)
+
+        db.commit()
+        return {"exam_id": student_exam.id, "status": "ready", "already_exists": False}
+    finally:
+        db.close()
+
+
+@router.get("/{course_id}/exams/final-status")
+async def final_exam_status(course_id: str, request: Request):
+    """Check if a final exam exists and student's attempt status."""
+    user = _require_user(request)
+
+    db = get_db()
+    try:
+        template = (
+            db.query(MockExam)
+            .filter(MockExam.course_id == course_id, MockExam.exam_type == "final",
+                    MockExam.shared_exam_id.is_(None))
+            .first()
+        )
+        if not template:
+            return {"available": False}
+
+        student_attempt = (
+            db.query(MockExam)
+            .filter(MockExam.user_id == user["user_id"], MockExam.shared_exam_id == template.id)
+            .first()
+        )
+
+        return {
+            "available": template.status in ("ready", "completed"),
+            "template_status": template.status,
+            "student_attempt": {
+                "exam_id": student_attempt.id,
+                "status": student_attempt.status,
+                "total_score": student_attempt.total_score,
+                "ap_score": getattr(student_attempt, "ap_score", None),
+            } if student_attempt else None,
+        }
+    finally:
+        db.close()
+
+
 async def _generate_exam_questions(
-    exam_id: str, course, topics_with_content: list,
-    sections: list, total_mcq: int, total_frq: int, frq_types: list
+    exam_id: str, course, topics_by_unit: dict,
+    sections: list, total_mcq: int, total_frq: int, frq_types: list,
+    unit_weights: dict | None = None, exam_format: dict | None = None,
 ):
     """Background task: generate exam questions via LLM."""
     db = get_db()
@@ -256,16 +373,40 @@ async def _generate_exam_questions(
             return result.get("response", "")
 
         questions = []
+        all_topics = []
+        for unit_topics in topics_by_unit.values():
+            all_topics.extend(unit_topics)
 
         # ── Generate MCQs ──
-        # Distribute across topics proportionally
-        if topics_with_content and total_mcq > 0:
+        if all_topics and total_mcq > 0:
+            # Build topic list with unit-weighted distribution
             topics_per_q = []
-            while len(topics_per_q) < total_mcq:
-                batch = list(topics_with_content)
-                random.shuffle(batch)
-                topics_per_q.extend(batch)
-            topics_per_q = topics_per_q[:total_mcq]
+            if unit_weights and topics_by_unit:
+                # Weighted distribution: allocate MCQs per unit based on official weights
+                for unit_num_str, weight in unit_weights.items():
+                    unit_num = int(unit_num_str)
+                    unit_topics = topics_by_unit.get(unit_num, [])
+                    if not unit_topics:
+                        continue
+                    # Use midpoint of min/max range
+                    pct = (weight["min"] + weight["max"]) / 2 / 100
+                    n_questions = max(1, round(total_mcq * pct))
+                    # Pick topics from this unit, cycling if needed
+                    for i in range(n_questions):
+                        topics_per_q.append(random.choice(unit_topics))
+                # Trim or pad to exact count
+                random.shuffle(topics_per_q)
+                if len(topics_per_q) > total_mcq:
+                    topics_per_q = topics_per_q[:total_mcq]
+                while len(topics_per_q) < total_mcq:
+                    topics_per_q.append(random.choice(all_topics))
+            else:
+                # Fallback: uniform distribution across all topics
+                while len(topics_per_q) < total_mcq:
+                    batch = list(all_topics)
+                    random.shuffle(batch)
+                    topics_per_q.extend(batch)
+                topics_per_q = topics_per_q[:total_mcq]
 
             # Find which section index is MCQ
             mcq_section_idx = next((i for i, s in enumerate(sections) if s["type"] == "mcq"), 0)
@@ -382,6 +523,8 @@ async def list_exams(course_id: str, request: Request):
                 "completed_at": e.completed_at.isoformat() if e.completed_at else None,
                 "time_limit_minutes": e.time_limit_minutes,
                 "total_score": e.total_score,
+                "ap_score": getattr(e, "ap_score", None),
+                "exam_type": getattr(e, "exam_type", "practice"),
                 "mcq_score": e.mcq_score,
                 "frq_score": e.frq_score,
                 "sections": json.loads(e.sections) if e.sections else [],
@@ -453,6 +596,8 @@ async def get_exam(course_id: str, exam_id: str, request: Request):
             "mcq_score": exam.mcq_score,
             "frq_score": exam.frq_score,
             "total_score": exam.total_score,
+            "ap_score": getattr(exam, "ap_score", None),
+            "exam_type": getattr(exam, "exam_type", "practice"),
         }
     finally:
         db.close()
@@ -720,10 +865,30 @@ async def _evaluate_frqs(exam_id: str, frq_question_ids: list, course):
                 frq_max = sum(q.max_score for q in frq_qs)
                 exam.frq_score = round((frq_earned / frq_max * 100) if frq_max else 0, 1)
 
-            # Total score (weighted: MCQ 55%, FRQ 45% for CSA)
+            # Total score — use dynamic weights from exam_format
             if exam.mcq_score is not None:
                 frq_pct = exam.frq_score or 0
-                exam.total_score = round(exam.mcq_score * 0.55 + frq_pct * 0.45, 1)
+                try:
+                    course_obj = db.query(Course).filter(Course.id == exam.course_id).first()
+                    ef = json.loads(course_obj.exam_format) if course_obj and course_obj.exam_format else {}
+                    weight = ef.get("weight", {"mcq": 55, "frq": 45})
+                    mcq_w = weight.get("mcq", 55) / 100
+                    frq_w = weight.get("frq", 45) / 100
+                    score_cutoffs = ef.get("score_cutoffs", {"5": 77, "4": 59, "3": 46, "2": 33})
+                except Exception:
+                    mcq_w, frq_w = 0.55, 0.45
+                    score_cutoffs = {"5": 77, "4": 59, "3": 46, "2": 33}
+
+                exam.total_score = round(exam.mcq_score * mcq_w + frq_pct * frq_w, 1)
+
+                # Calculate AP score (1-5)
+                total = exam.total_score
+                ap = 1
+                for s_str in ["5", "4", "3", "2"]:
+                    if total >= score_cutoffs.get(s_str, 100):
+                        ap = int(s_str)
+                        break
+                exam.ap_score = ap
 
             db.commit()
 
@@ -769,6 +934,8 @@ async def get_results(course_id: str, exam_id: str, request: Request):
             "mcq_score": exam.mcq_score,
             "frq_score": exam.frq_score,
             "total_score": exam.total_score,
+            "ap_score": getattr(exam, "ap_score", None),
+            "exam_type": getattr(exam, "exam_type", "practice"),
             "started_at": exam.started_at.isoformat() if exam.started_at else None,
             "completed_at": exam.completed_at.isoformat() if exam.completed_at else None,
             "questions": questions,

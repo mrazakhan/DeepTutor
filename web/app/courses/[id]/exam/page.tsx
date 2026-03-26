@@ -26,8 +26,21 @@ interface ExamSummary {
   total_score: number | null;
   mcq_score: number | null;
   frq_score: number | null;
+  ap_score: number | null;
+  exam_type: string;
   sections: { name: string; type: string; count: number; minutes: number }[];
   question_count: number;
+}
+
+interface FinalStatus {
+  available: boolean;
+  template_status?: string;
+  student_attempt?: {
+    exam_id: string;
+    status: string;
+    total_score: number | null;
+    ap_score: number | null;
+  } | null;
 }
 
 interface CourseInfo {
@@ -48,9 +61,12 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
   const router = useRouter();
   const [course, setCourse] = useState<CourseInfo | null>(null);
   const [exams, setExams] = useState<ExamSummary[]>([]);
+  const [finalStatus, setFinalStatus] = useState<FinalStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingFinal, setGeneratingFinal] = useState(false);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const isAdmin = user?.role === "admin";
 
   const headers = useCallback(() => {
     const token = localStorage.getItem("deeptutor_token");
@@ -60,12 +76,14 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     async function load() {
       try {
-        const [courseRes, examsRes] = await Promise.all([
+        const [courseRes, examsRes, finalRes] = await Promise.all([
           fetch(apiUrl(`/api/v1/courses/${courseId}`), { headers: headers() }),
           fetch(apiUrl(`/api/v1/courses/${courseId}/exams`), { headers: headers() }),
+          fetch(apiUrl(`/api/v1/courses/${courseId}/exams/final-status`), { headers: headers() }),
         ]);
         if (courseRes.ok) setCourse(await courseRes.json());
         if (examsRes.ok) setExams(await examsRes.json());
+        if (finalRes.ok) setFinalStatus(await finalRes.json());
       } catch { /* skip */ }
       setLoading(false);
     }
@@ -93,23 +111,39 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
     return () => clearInterval(interval);
   }, [generatingId, courseId, headers]);
 
-  async function handleGenerate() {
-    setGenerating(true);
+  async function handleGenerate(examType: "practice" | "final" = "practice") {
+    if (examType === "final") setGeneratingFinal(true);
+    else setGenerating(true);
     try {
       const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/exams/generate`), {
         method: "POST",
         headers: headers(),
-        body: JSON.stringify({}),
+        body: JSON.stringify({ exam_type: examType }),
       });
       if (res.ok) {
         const data = await res.json();
         setGeneratingId(data.exam_id);
       } else {
         setGenerating(false);
+        setGeneratingFinal(false);
       }
     } catch {
       setGenerating(false);
+      setGeneratingFinal(false);
     }
+  }
+
+  async function handleStartFinal() {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/exams/start-final`), {
+        method: "POST",
+        headers: headers(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        router.push(`/courses/${courseId}/exam/${data.exam_id}`);
+      }
+    } catch { /* skip */ }
   }
 
   function formatDate(iso: string | null) {
@@ -179,43 +213,99 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
-      {/* Generate New Exam */}
+      {/* ── Final Exam Section ── */}
+      <div className="mb-8 p-5 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-950/20">
+        <h2 className="text-sm font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Trophy className="w-4 h-4" /> Final Exam
+        </h2>
+
+        {finalStatus?.student_attempt?.status === "completed" ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                Completed — Score: <strong>{Math.round(finalStatus.student_attempt.total_score || 0)}%</strong>
+                {finalStatus.student_attempt.ap_score && (
+                  <span className="ml-2">AP Score: <strong>{finalStatus.student_attempt.ap_score}/5</strong></span>
+                )}
+              </p>
+            </div>
+            <Link
+              href={`/courses/${courseId}/exam/${finalStatus.student_attempt.exam_id}/results`}
+              className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700"
+            >
+              View Results
+            </Link>
+          </div>
+        ) : finalStatus?.student_attempt ? (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-amber-600">Final exam in progress</p>
+            <Link
+              href={`/courses/${courseId}/exam/${finalStatus.student_attempt.exam_id}`}
+              className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600"
+            >
+              <RotateCcw className="w-4 h-4 inline mr-1" /> Resume
+            </Link>
+          </div>
+        ) : finalStatus?.available ? (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-600 dark:text-slate-400">Final exam is available. You have one attempt.</p>
+            <button
+              onClick={handleStartFinal}
+              className="px-5 py-2.5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 flex items-center gap-1"
+            >
+              <Play className="w-4 h-4" /> Start Final Exam
+            </button>
+          </div>
+        ) : isAdmin ? (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500">No final exam created yet.</p>
+            <button
+              onClick={() => handleGenerate("final")}
+              disabled={generatingFinal}
+              className="px-5 py-2.5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
+            >
+              {generatingFinal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              {generatingFinal ? "Generating..." : "Generate Final Exam"}
+            </button>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">Final exam not yet available. Your instructor will publish it when ready.</p>
+        )}
+      </div>
+
+      {/* ── Practice Exams Section ── */}
       <div className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <BookOpen className="w-4 h-4" /> Practice Exams
+        </h2>
         <button
-          onClick={handleGenerate}
+          onClick={() => handleGenerate("practice")}
           disabled={generating}
-          className="px-6 py-3 rounded-xl bg-blue-500 text-white font-semibold hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+          className="px-6 py-3 rounded-xl bg-blue-500 text-white font-semibold hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 mb-4"
         >
           {generating ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Generating exam questions...
+              Generating practice exam...
             </>
           ) : (
             <>
               <Play className="w-5 h-5" />
-              Generate New Mock Exam
+              Generate Practice Exam
             </>
           )}
         </button>
         {generating && (
-          <p className="text-xs text-slate-400 mt-2">
+          <p className="text-xs text-slate-400 mb-4">
             This may take a few minutes as fresh questions are being created by AI...
           </p>
         )}
-      </div>
 
-      {/* Past Exams */}
-      <div>
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Trophy className="w-4 h-4" /> Your Exams
-        </h2>
-
-        {exams.length === 0 ? (
-          <p className="text-slate-400 text-sm">No exams yet. Generate one to get started!</p>
+        {exams.filter((e) => e.exam_type !== "final").length === 0 ? (
+          <p className="text-slate-400 text-sm">No practice exams yet.</p>
         ) : (
           <div className="space-y-3">
-            {exams.map((exam) => (
+            {exams.filter((e) => e.exam_type !== "final").map((exam) => (
               <div
                 key={exam.id}
                 className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
@@ -240,8 +330,9 @@ export default function ExamLauncherPage({ params }: { params: Promise<{ id: str
                   </div>
                   {exam.total_score !== null && (
                     <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-                      Score: <strong>{exam.total_score}%</strong>
-                      {exam.mcq_score !== null && <span className="text-xs text-slate-400 ml-2">MCQ: {exam.mcq_score}%</span>}
+                      Score: <strong>{Math.round(exam.total_score)}%</strong>
+                      {exam.ap_score && <span className="ml-2 text-xs font-bold text-purple-600">AP: {exam.ap_score}/5</span>}
+                      {exam.mcq_score !== null && <span className="text-xs text-slate-400 ml-2">MCQ: {Math.round(exam.mcq_score)}%</span>}
                       {exam.frq_score !== null && <span className="text-xs text-slate-400 ml-2">FRQ: {exam.frq_score}%</span>}
                     </div>
                   )}

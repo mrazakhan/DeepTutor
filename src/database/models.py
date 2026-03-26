@@ -216,8 +216,10 @@ class MockExam(Base):
     __tablename__ = "mock_exams"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)  # NULL for shared final templates
     course_id = Column(String, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    exam_type = Column(String(20), nullable=False, default="practice")  # practice | final
+    shared_exam_id = Column(String, nullable=True)  # For student finals: points to admin-created template
     status = Column(String(20), nullable=False, default="generating")  # generating|ready|in_progress|completed|timed_out
     created_at = Column(DateTime, default=utcnow)
     started_at = Column(DateTime, nullable=True)
@@ -228,6 +230,7 @@ class MockExam(Base):
     mcq_score = Column(Float, nullable=True)
     frq_score = Column(Float, nullable=True)
     total_score = Column(Float, nullable=True)
+    ap_score = Column(Integer, nullable=True)  # 1-5 estimated AP score
     sections = Column(Text, nullable=False)  # JSON: [{name, type, count, minutes}]
 
     user = relationship("User")

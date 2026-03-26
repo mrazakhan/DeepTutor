@@ -44,6 +44,9 @@ def init_db():
         ("users", "enabled", "BOOLEAN DEFAULT 1"),
         ("topic_content", "golden_solutions", "TEXT"),
         ("topic_content", "extra_frqs", "TEXT"),
+        ("mock_exams", "exam_type", "VARCHAR(20) DEFAULT 'practice'"),
+        ("mock_exams", "shared_exam_id", "VARCHAR"),
+        ("mock_exams", "ap_score", "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, column, col_type in _migrate_columns:
