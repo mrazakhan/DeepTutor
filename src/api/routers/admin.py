@@ -101,6 +101,7 @@ async def list_users(request: Request):
                 "id": u.id,
                 "username": u.username,
                 "display_name": u.display_name,
+                "email": getattr(u, "email", None),
                 "role": u.role,
                 "enabled": getattr(u, "enabled", True),
                 "created_at": u.created_at.isoformat() if u.created_at else None,

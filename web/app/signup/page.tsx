@@ -11,6 +11,7 @@ export default function SignupPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +38,7 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await register(username, password, displayName);
+      await register(username, password, displayName, email);
       router.push("/");
     } catch (err: any) {
       setError(err.message || "Registration failed");
@@ -86,6 +87,20 @@ export default function SignupPage() {
               onChange={(e) => setDisplayName(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
               placeholder="Your name"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+              placeholder="your@email.com"
               required
             />
           </div>

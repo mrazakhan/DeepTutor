@@ -34,6 +34,7 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
     display_name: str
+    email: str = ""
 
 
 class LoginResponse(BaseModel):
@@ -79,10 +80,12 @@ async def register(body: RegisterRequest):
         if db.query(User).filter(User.username == username).first():
             raise HTTPException(status_code=409, detail="Username already taken")
 
+        email = body.email.strip() if body.email else None
         user = User(
             username=username,
             password_hash=_hash_password(password),
             display_name=display_name,
+            email=email,
             role="student",
         )
         db.add(user)
