@@ -816,7 +816,7 @@ export default function StudyPage({
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ count: 3 }),
+          body: JSON.stringify({ count: 3, use_uploads: userFiles.length > 0 }),
         }
       );
       if (res.ok) {
@@ -1760,7 +1760,15 @@ export default function StudyPage({
                 {generatingQuestions ? (
                   <><Loader2 className="w-3 h-3 animate-spin" /> Generating...</>
                 ) : (
-                  <><Sparkles className="w-3 h-3" /> More Practice Questions</>
+                  <>
+                    <Sparkles className="w-3 h-3" />
+                    More Practice Questions
+                    {userFiles.length > 0 && (
+                      <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full ml-1">
+                        + your files
+                      </span>
+                    )}
+                  </>
                 )}
               </button>
             )}

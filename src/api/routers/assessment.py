@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -25,6 +26,14 @@ router = APIRouter()
 init_db()
 
 
+def _get_user_kb_name(user_id: str, course_code: str) -> str | None:
+    """Check if user has uploaded materials and return their KB name."""
+    upload_dir = Path("data/user_uploads") / str(user_id) / course_code
+    if upload_dir.exists() and any(upload_dir.iterdir()):
+        return f"user-{user_id}-{course_code.lower().replace('_', '-')}"
+    return None
+
+
 class SubmitAnswerRequest(BaseModel):
     question_type: str  # "mcq" or "frq"
     question_text: str
@@ -38,6 +47,7 @@ class SubmitAnswerRequest(BaseModel):
 class GenerateQuestionsRequest(BaseModel):
     count: int = 3
     difficulty: str = "medium"  # "easy", "medium", "hard"
+    use_uploads: bool = False  # Generate from user-uploaded materials
 
 
 def _get_user_from_request(request: Request) -> dict:
@@ -398,6 +408,12 @@ async def generate_additional_questions(
         project_root = Path(__file__).parent.parent.parent.parent
         config = load_config_with_main("solve_config.yaml", project_root)
 
+        # Check if user has uploaded materials for this course
+        user_kb_name = None
+        upload_context = ""
+        if body.use_uploads:
+            user_kb_name = _get_user_kb_name(user["user_id"], course.code)
+
         agent = TutorAgent(
             course_code=course.code,
             course_name=course.name,
@@ -406,7 +422,22 @@ async def generate_additional_questions(
             api_key=api_key,
             base_url=base_url,
             api_version=api_version,
+            user_kb_name=user_kb_name,
         )
+
+        # If using uploads, retrieve context from user materials
+        if user_kb_name:
+            try:
+                ctx, _ = await agent.retrieve_context(
+                    f"{topic.title} {unit.title} practice questions"
+                )
+                if ctx:
+                    upload_context = (
+                        f"\n\n**Use the following study material as additional context "
+                        f"for generating questions:**\n{ctx[:3000]}\n"
+                    )
+            except Exception:
+                pass
 
         fmt = {
             "topic_title": topic.title,
@@ -418,7 +449,7 @@ async def generate_additional_questions(
 
         async def _generate(prompt: str) -> str:
             result = await agent.process(
-                message=prompt,
+                message=prompt + upload_context,
                 history=[],
                 topic_title=topic.title,
                 unit_title=unit.title,
