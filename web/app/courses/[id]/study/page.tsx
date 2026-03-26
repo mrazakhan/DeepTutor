@@ -1836,7 +1836,7 @@ export default function StudyPage({
           {frqEvalResult !== null ? (
             <>
               {/* Top half: student code with error highlights */}
-              <div className="flex flex-col" style={{ height: "45%" }}>
+              <div className="flex flex-col flex-shrink-0">
                 <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
                   <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Your Code
@@ -1854,23 +1854,21 @@ export default function StudyPage({
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="flex-1 overflow-hidden">
-                  <CodeEditor
-                    value={frqEvalCode}
-                    onChange={() => {}}
-                    language="java"
-                    height="100%"
-                    readOnly
-                    errorLines={evalErrorLines}
-                  />
-                </div>
+                <CodeEditor
+                  value={frqEvalCode}
+                  onChange={() => {}}
+                  language="java"
+                  height="calc(45vh - 40px)"
+                  readOnly
+                  errorLines={evalErrorLines}
+                />
               </div>
 
               {/* Divider with resize handle styling */}
               <div className="h-1 bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
 
               {/* Bottom half: evaluation feedback */}
-              <div className="flex flex-col" style={{ height: "calc(55% - 4px)" }}>
+              <div className="flex flex-col flex-1 min-h-0">
                 <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800">
                   {frqEvalStreaming ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
