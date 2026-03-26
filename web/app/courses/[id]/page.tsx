@@ -415,6 +415,15 @@ export default function CourseDetailPage({
           {course.exam_format.note && (
             <p className="text-xs text-slate-400 mt-2">{course.exam_format.note}</p>
           )}
+          {user && (
+            <Link
+              href={`/courses/${courseId}/exam`}
+              className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 transition-colors"
+            >
+              <GraduationCap className="w-4 h-4" />
+              {t("Take Mock Exam")}
+            </Link>
+          )}
         </div>
       )}
 

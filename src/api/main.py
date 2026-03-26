@@ -11,6 +11,7 @@ from src.api.routers import (
     assessment,
     auth,
     chat,
+    exam,
     co_writer,
     config,
     courses,
@@ -210,6 +211,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(courses.router, prefix="/api/v1/courses", tags=["courses"])
 app.include_router(assessment.router, prefix="/api/v1/courses", tags=["assessment"])
+app.include_router(exam.router, prefix="/api/v1/courses", tags=["exam"])
 app.include_router(tutor.router, prefix="/api/v1/tutor", tags=["tutor"])
 
 
