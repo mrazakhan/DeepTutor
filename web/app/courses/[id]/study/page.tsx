@@ -30,6 +30,7 @@ import {
 import { apiUrl, wsUrl } from "@/lib/api";
 import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
 import { processLatexContent } from "@/lib/latex";
+import { parseChatMCQ } from "@/lib/mcqParser";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { useGlobal } from "@/context/GlobalContext";
@@ -236,6 +237,10 @@ export default function StudyPage({
   const [sessionMcqs, setSessionMcqs] = useState<MCQuestion[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showMCQExplanation, setShowMCQExplanation] = useState(false);
+  // Chat-generated MCQ state
+  const [chatMcqMode, setChatMcqMode] = useState(false);
+  const [chatMcqTrailing, setChatMcqTrailing] = useState<string | null>(null);
+  const pendingMcqRef = useRef(false);
   // FRQ state
   const [activeFRQ, setActiveFRQ] = useState<FRQuestion | null>(null);
   const [frqIndex, setFrqIndex] = useState(0);
@@ -512,6 +517,9 @@ export default function StudyPage({
         setInlineEditorCode("");
         pendingInlineEditorRef.current = true;
       }
+      if (key === "practice_mcq") {
+        pendingMcqRef.current = true;
+      }
       // Track suggestion key for caching the AI response
       if (key === "intro" || key === "exam" || key === "mistakes") {
         pendingSuggestionKeyRef.current = key;
@@ -547,6 +555,7 @@ export default function StudyPage({
         ]);
         return;
       }
+      pendingMcqRef.current = true;
       sendMessage(label);
       return;
     }
@@ -649,6 +658,17 @@ export default function StudyPage({
         })
         .catch(console.error);
     }
+  }
+
+  function handleSubmitChatMCQ() {
+    if (!activeMCQ || !selectedAnswer) return;
+    const answerText = activeMCQ.options[selectedAnswer] || "";
+    setActiveMCQ(null);
+    setChatMcqMode(false);
+    setChatMcqTrailing(null);
+    setSelectedAnswer(null);
+    // Send selection to tutor — they'll respond with feedback
+    sendMessage(`My answer is (${selectedAnswer}) ${answerText}`);
   }
 
   function handleNextMCQ() {
@@ -928,6 +948,32 @@ export default function StudyPage({
             pendingInlineEditorRef.current = false;
             setShowInlineEditor(true);
             setInlineEditorCode("");
+          }
+          // Detect chat-generated MCQ and activate button UI
+          if (pendingMcqRef.current) {
+            pendingMcqRef.current = false;
+            const parsed = parseChatMCQ(data.content);
+            if (parsed) {
+              // Hide the raw text message, show structured MCQ instead
+              setMessages((prev) => {
+                const msgs = [...prev];
+                const last = msgs[msgs.length - 1];
+                if (last?.role === "assistant") {
+                  msgs[msgs.length - 1] = { ...last, type: "mcq_source" as const };
+                }
+                return msgs;
+              });
+              setActiveMCQ({
+                question: parsed.question,
+                options: parsed.options,
+                correct: "",      // unknown — tutor will evaluate after submission
+                explanation: "",
+              });
+              setSelectedAnswer(null);
+              setShowMCQExplanation(false);
+              setChatMcqMode(true);
+              setChatMcqTrailing(parsed.trailingText || null);
+            }
           }
           // Cache AI response for cacheable suggestion keys
           const cacheKey = pendingSuggestionKeyRef.current;
@@ -1632,7 +1678,7 @@ export default function StudyPage({
             <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-medium text-blue-500 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
-                  MCQ {mcqIndex + 1} of {preloadedContent?.practice_mcq?.length || 1}
+                  {chatMcqMode ? "Practice Question" : `MCQ ${mcqIndex + 1} of ${preloadedContent?.practice_mcq?.length || 1}`}
                 </span>
               </div>
               <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
@@ -1664,13 +1710,21 @@ export default function StudyPage({
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSubmitMCQ}
+                  onClick={chatMcqMode ? handleSubmitChatMCQ : handleSubmitMCQ}
                   disabled={!selectedAnswer}
                   className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {t("Submit Answer")}
                 </button>
               </div>
+              {/* Trailing guidance text for chat-generated MCQs */}
+              {chatMcqMode && chatMcqTrailing && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 prose prose-sm dark:prose-invert max-w-none text-slate-500 dark:text-slate-400">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                    {processLatexContent(chatMcqTrailing)}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           </div>
         )}
