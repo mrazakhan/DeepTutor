@@ -617,7 +617,8 @@ export default function StudyPage({
 
   // ── MCQ handlers ──
   function handleAnswerSelect(letter: string) {
-    if (!activeMCQ || showMCQExplanation) return;
+    if (showMCQExplanation) return;
+    if (!activeMCQ && !assessmentMode) return;
     setSelectedAnswer(letter);
   }
 
