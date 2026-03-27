@@ -100,12 +100,12 @@ interface PreloadedContent {
 
 type SuggestionKey = "intro" | "practice_mcq" | "practice_frq" | "exam" | "mistakes";
 
-const SUGGESTION_KEYS: { label: (topicTitle: string) => string; key: SuggestionKey }[] = [
-  { label: (t) => `Explain ${t} step by step`, key: "intro" },
-  { label: () => "Practice: Multiple Choice", key: "practice_mcq" },
-  { label: () => "Practice: Free Response", key: "practice_frq" },
-  { label: () => "How does this appear on the AP exam?", key: "exam" },
-  { label: () => "What are common mistakes students make?", key: "mistakes" },
+const SUGGESTION_KEYS: { label: (topicTitle: string) => string; shortLabel: string; key: SuggestionKey; icon: string }[] = [
+  { label: (t) => `Explain ${t} step by step`, shortLabel: "Learn", key: "intro", icon: "📖" },
+  { label: () => "Practice: Multiple Choice", shortLabel: "MCQs", key: "practice_mcq", icon: "✅" },
+  { label: () => "Practice: Free Response", shortLabel: "FRQs", key: "practice_frq", icon: "✍️" },
+  { label: () => "How does this appear on the AP exam?", shortLabel: "AP Exam", key: "exam", icon: "🎯" },
+  { label: () => "What are common mistakes students make?", shortLabel: "Pitfalls", key: "mistakes", icon: "⚠️" },
 ];
 
 const MCQ_SESSION_SIZE = 5; // Show 5 MCQs per practice session from the larger pool
@@ -1281,19 +1281,15 @@ export default function StudyPage({
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-              <GraduationCapIcon className="w-8 h-8 text-blue-500" />
-            </div>
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2">
-              {t("Study")}: {topicLabel}
+          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-1">
+              {topicLabel}
             </h2>
-            <p className="text-sm text-slate-400 max-w-md mb-6">
-              {t("Ask me anything about this topic. I can explain concepts, give practice questions, or help you prepare for the AP exam.")}
+            <p className="text-xs text-slate-400 mb-6">
+              {t("Choose how you'd like to study")}
             </p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {SUGGESTION_KEYS.map(({ label, key }) => {
-                // Hide FRQ button if preloaded content has no FRQs (course doesn't have FRQ section)
+            <div className="grid grid-cols-3 gap-2 max-w-lg w-full mb-4">
+              {SUGGESTION_KEYS.map(({ label, shortLabel, key, icon }) => {
                 if (key === "practice_frq" && preloadedContent && !preloadedContent.practice_frq?.length) {
                   return null;
                 }
@@ -1317,29 +1313,48 @@ export default function StudyPage({
                   <button
                     key={key}
                     onClick={() => handleSuggestion(text, key)}
-                    className={`text-xs px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1.5 ${
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all hover:scale-[1.02] ${
                       hasPreloaded
-                        ? "border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 hover:border-blue-200"
+                        ? "border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                        : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-blue-200"
                     }`}
                   >
-                    {hasPreloaded && <Sparkles className="w-3 h-3" />}
-                    {text}
+                    <span className="text-lg">{icon}</span>
+                    <span className={`text-xs font-semibold ${hasPreloaded ? "text-purple-600 dark:text-purple-400" : "text-slate-700 dark:text-slate-300"}`}>
+                      {shortLabel}
+                    </span>
                     {count > 0 && (
-                      <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
-                        {count}
+                      <span className="text-[10px] text-purple-500 dark:text-purple-400 font-medium">
+                        {count} ready
                       </span>
                     )}
                   </button>
                 );
               })}
+              {/* Assessment card */}
+              {preloadedContent?.practice_mcq && preloadedContent.practice_mcq.length > 0 && (
+                <button
+                  onClick={() => {
+                    const allMcqs = (preloadedContent?.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+                    if (allMcqs.length > 0) {
+                      setAssessmentQuestions(shuffleArray([...allMcqs]));
+                      setAssessmentIndex(0);
+                      setAssessmentScore({ correct: 0, total: 0 });
+                      setAssessmentMode(true);
+                      setSelectedAnswer(null);
+                      setShowMCQExplanation(false);
+                    }
+                  }}
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all hover:scale-[1.02]"
+                >
+                  <span className="text-lg">📝</span>
+                  <span className="text-xs font-semibold text-green-600 dark:text-green-400">Assess</span>
+                  <span className="text-[10px] text-green-500 dark:text-green-400 font-medium">
+                    {preloadedContent.practice_mcq.filter((q: MCQuestion) => !q.raw_text).length} Qs
+                  </span>
+                </button>
+              )}
             </div>
-            {preloadedContent && (
-              <p className="text-xs text-purple-400 mt-3 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" />
-                {t("Purple buttons have instant pre-generated answers")}
-              </p>
-            )}
           </div>
         )}
 
