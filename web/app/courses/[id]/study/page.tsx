@@ -100,12 +100,12 @@ interface PreloadedContent {
 
 type SuggestionKey = "intro" | "practice_mcq" | "practice_frq" | "exam" | "mistakes";
 
-const SUGGESTION_KEYS: { label: (topicTitle: string) => string; shortLabel: string; key: SuggestionKey; icon: string }[] = [
-  { label: (t) => `Explain ${t} step by step`, shortLabel: "Learn", key: "intro", icon: "📖" },
-  { label: () => "Practice: Multiple Choice", shortLabel: "MCQs", key: "practice_mcq", icon: "✅" },
-  { label: () => "Practice: Free Response", shortLabel: "FRQs", key: "practice_frq", icon: "✍️" },
-  { label: () => "How does this appear on the AP exam?", shortLabel: "AP Exam", key: "exam", icon: "🎯" },
-  { label: () => "What are common mistakes students make?", shortLabel: "Pitfalls", key: "mistakes", icon: "⚠️" },
+const SUGGESTION_KEYS: { label: (topicTitle: string) => string; shortLabel: string; desc: string; key: SuggestionKey; color: string }[] = [
+  { label: (t) => `Explain ${t} step by step`, shortLabel: "Learn", desc: "Step-by-step explanation", key: "intro", color: "blue" },
+  { label: () => "Practice: Multiple Choice", shortLabel: "Practice MCQs", desc: "Multiple choice questions", key: "practice_mcq", color: "green" },
+  { label: () => "Practice: Free Response", shortLabel: "Practice FRQs", desc: "Free response coding", key: "practice_frq", color: "amber" },
+  { label: () => "How does this appear on the AP exam?", shortLabel: "AP Exam Tips", desc: "What to expect on test day", key: "exam", color: "purple" },
+  { label: () => "What are common mistakes students make?", shortLabel: "Common Mistakes", desc: "Pitfalls to avoid", key: "mistakes", color: "red" },
 ];
 
 const MCQ_SESSION_SIZE = 5; // Show 5 MCQs per practice session from the larger pool
@@ -1282,14 +1282,14 @@ export default function StudyPage({
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-1">
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-1">
               {topicLabel}
             </h2>
-            <p className="text-xs text-slate-400 mb-6">
+            <p className="text-sm text-slate-400 mb-8">
               {t("Choose how you'd like to study")}
             </p>
-            <div className="grid grid-cols-3 gap-2 max-w-lg w-full mb-4">
-              {SUGGESTION_KEYS.map(({ label, shortLabel, key, icon }) => {
+            <div className="grid grid-cols-3 gap-3 max-w-2xl w-full mb-4">
+              {SUGGESTION_KEYS.map(({ label, shortLabel, desc, key, color }) => {
                 if (key === "practice_frq" && preloadedContent && !preloadedContent.practice_frq?.length) {
                   return null;
                 }
@@ -1309,25 +1309,50 @@ export default function StudyPage({
                     hasPreloaded = !!(preloadedContent as Record<string, unknown>)[key];
                   }
                 }
+                const colorMap: Record<string, string> = {
+                  blue: "border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300",
+                  green: "border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20 hover:border-green-300",
+                  amber: "border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-300",
+                  purple: "border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300",
+                  red: "border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300",
+                };
+                const iconMap: Record<string, typeof BookOpen> = {
+                  blue: BookOpen,
+                  green: Sparkles,
+                  amber: Send,
+                  purple: GraduationCap,
+                  red: AlertTriangle,
+                };
+                const textColorMap: Record<string, string> = {
+                  blue: "text-blue-600 dark:text-blue-400",
+                  green: "text-green-600 dark:text-green-400",
+                  amber: "text-amber-600 dark:text-amber-400",
+                  purple: "text-purple-600 dark:text-purple-400",
+                  red: "text-red-600 dark:text-red-400",
+                };
+                const bgIconMap: Record<string, string> = {
+                  blue: "bg-blue-100 dark:bg-blue-900/30",
+                  green: "bg-green-100 dark:bg-green-900/30",
+                  amber: "bg-amber-100 dark:bg-amber-900/30",
+                  purple: "bg-purple-100 dark:bg-purple-900/30",
+                  red: "bg-red-100 dark:bg-red-900/30",
+                };
+                const IconComponent = iconMap[color] || BookOpen;
                 return (
                   <button
                     key={key}
                     onClick={() => handleSuggestion(text, key)}
-                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all hover:scale-[1.02] ${
-                      hasPreloaded
-                        ? "border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 hover:bg-purple-50 dark:hover:bg-purple-900/20"
-                        : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-blue-200"
-                    }`}
+                    className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all hover:scale-[1.03] hover:shadow-md ${colorMap[color] || colorMap.blue}`}
                   >
-                    <span className="text-lg">{icon}</span>
-                    <span className={`text-xs font-semibold ${hasPreloaded ? "text-purple-600 dark:text-purple-400" : "text-slate-700 dark:text-slate-300"}`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${bgIconMap[color] || bgIconMap.blue}`}>
+                      <IconComponent className={`w-6 h-6 ${textColorMap[color] || textColorMap.blue}`} />
+                    </div>
+                    <span className={`text-sm font-bold ${textColorMap[color] || textColorMap.blue}`}>
                       {shortLabel}
                     </span>
-                    {count > 0 && (
-                      <span className="text-[10px] text-purple-500 dark:text-purple-400 font-medium">
-                        {count} ready
-                      </span>
-                    )}
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {count > 0 ? `${count} questions ready` : desc}
+                    </span>
                   </button>
                 );
               })}
@@ -1345,12 +1370,16 @@ export default function StudyPage({
                       setShowMCQExplanation(false);
                     }
                   }}
-                  className="flex flex-col items-center gap-1 p-3 rounded-xl border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all hover:scale-[1.02]"
+                  className="flex flex-col items-center gap-2 p-5 rounded-2xl border-2 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 transition-all hover:scale-[1.03] hover:shadow-md"
                 >
-                  <span className="text-lg">📝</span>
-                  <span className="text-xs font-semibold text-green-600 dark:text-green-400">Assess</span>
-                  <span className="text-[10px] text-green-500 dark:text-green-400 font-medium">
-                    {preloadedContent.practice_mcq.filter((q: MCQuestion) => !q.raw_text).length} Qs
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30">
+                    <GraduationCap className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                    Take Assessment
+                  </span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                    {preloadedContent.practice_mcq.filter((q: MCQuestion) => !q.raw_text).length} graded questions
                   </span>
                 </button>
               )}
