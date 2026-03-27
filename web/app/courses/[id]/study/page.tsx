@@ -224,6 +224,7 @@ export default function StudyPage({
   const [course, setCourse] = useState<CourseInfo | null>(null);
   const [topic, setTopic] = useState<TopicInfo | null>(null);
   const [unit, setUnit] = useState<UnitInfo | null>(null);
+  const [nextTopic, setNextTopic] = useState<{ id: string; unitId: string; topicNumber: string; title: string } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -331,18 +332,25 @@ export default function StudyPage({
         const data = await res.json();
         setCourse({ id: data.id, code: data.code, name: data.name });
 
-        // Find the unit and topic
+        // Find the unit, topic, and next topic
+        const allTopics: { id: string; unitId: string; topicNumber: string; title: string }[] = [];
         for (const u of data.units) {
+          for (const tp of u.topics) {
+            allTopics.push({ id: tp.id, unitId: u.id, topicNumber: tp.topic_number, title: tp.title });
+          }
           if (unitId && String(u.id) === unitId) {
             setUnit({ id: u.id, unit_number: u.unit_number, title: u.title });
             for (const tp of u.topics) {
               if (topicId && String(tp.id) === topicId) {
                 setTopic({ id: tp.id, topic_number: tp.topic_number, title: tp.title });
-                break;
               }
             }
-            break;
           }
+        }
+        // Find next topic in sequence
+        const currentIdx = allTopics.findIndex((t) => t.id === topicId);
+        if (currentIdx >= 0 && currentIdx + 1 < allTopics.length) {
+          setNextTopic(allTopics[currentIdx + 1]);
         }
       } catch (err) {
         console.error("Failed to load course info:", err);
@@ -1618,13 +1626,16 @@ export default function StudyPage({
                               const score = assessmentScore;
                               const pct = Math.round((score.correct / score.total) * 100);
                               const emoji = pct >= 80 ? "🎉" : pct >= 60 ? "👍" : "📚";
+                              const nextTopicHint = nextTopic
+                                ? `\n\n➡️ Ready for the next topic? **${nextTopic.topicNumber} ${nextTopic.title}**`
+                                : "";
                               setMessages(prev => [...prev, {
                                 role: "assistant",
                                 content: `${emoji} **Assessment Complete!**\n\nYou scored **${score.correct}/${score.total}** (${pct}%)\n\n${
                                   pct >= 80 ? "Excellent! You've mastered this topic." :
                                   pct >= 60 ? "Good progress! Review the questions you missed and try again." :
                                   "Keep studying! Review the explanations and practice more to improve."
-                                }\n\n${pct < 70 ? "💡 **Tip:** Click **More Practice Questions** below to generate additional practice tailored to your level." : ""}`,
+                                }${pct < 70 ? "\n\n💡 **Tip:** Click **More Practice Questions** below to generate additional practice tailored to your level." : ""}${nextTopicHint}`,
                               }]);
                               setAssessmentMode(false);
                               setAssessmentQuestions([]);
@@ -1751,6 +1762,28 @@ export default function StudyPage({
                 Next MCQ →
               </button>
             )}
+            {/* Take Assessment button — shown when all MCQs in session are done */}
+            {sessionMcqs.length > 0 && mcqIndex >= sessionMcqs.length - 1 && preloadedContent?.practice_mcq && (
+              <button
+                onClick={() => {
+                  setActiveMCQ(null);
+                  setShowMCQExplanation(false);
+                  setSelectedAnswer(null);
+                  // Start assessment mode
+                  const allMcqs = (preloadedContent?.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+                  if (allMcqs.length > 0) {
+                    setAssessmentQuestions(shuffleArray([...allMcqs]));
+                    setAssessmentIndex(0);
+                    setAssessmentScore({ correct: 0, total: 0 });
+                    setAssessmentMode(true);
+                  }
+                }}
+                className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                Take Assessment →
+              </button>
+            )}
             {/* Generate more questions button */}
             {user && topicId && (
               <button
@@ -1772,6 +1805,15 @@ export default function StudyPage({
                   </>
                 )}
               </button>
+            )}
+            {/* Next Topic button — shown when not in assessment mode and nextTopic exists */}
+            {nextTopic && !assessmentMode && (
+              <a
+                href={`/courses/${courseId}/study?topicId=${nextTopic.id}&unitId=${nextTopic.unitId}`}
+                className="text-xs px-4 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                Next Topic: {nextTopic.topicNumber} {nextTopic.title} →
+              </a>
             )}
           </div>
         )}
@@ -1856,14 +1898,37 @@ export default function StudyPage({
                   })()}
                 </div>
               )}
-              {hasNext && (
-                <button
-                  onClick={handleNextFRQ}
-                  className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
-                >
-                  Next FRQ →
-                </button>
-              )}
+              <div className="flex gap-2 flex-wrap">
+                {hasNext && (
+                  <button
+                    onClick={handleNextFRQ}
+                    className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
+                  >
+                    Next FRQ →
+                  </button>
+                )}
+                {!hasNext && preloadedContent?.practice_mcq && (
+                  <button
+                    onClick={() => {
+                      setActiveFRQ(null);
+                      setShowFRQSolution(false);
+                      const allMcqs = (preloadedContent?.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+                      if (allMcqs.length > 0) {
+                        setAssessmentQuestions(shuffleArray([...allMcqs]));
+                        setAssessmentIndex(0);
+                        setAssessmentScore({ correct: 0, total: 0 });
+                        setAssessmentMode(true);
+                        setSelectedAnswer(null);
+                        setShowMCQExplanation(false);
+                      }
+                    }}
+                    className="text-xs px-4 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    Take Assessment →
+                  </button>
+                )}
+              </div>
             </div>
           );
         })()}
