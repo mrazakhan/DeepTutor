@@ -6,6 +6,8 @@ import { GlobalProvider } from "@/context/GlobalContext";
 import { AuthProvider } from "@/lib/auth";
 import ThemeScript from "@/components/ThemeScript";
 import LayoutWrapper from "@/components/LayoutWrapper";
+import ScrollToTop from "@/components/ScrollToTop";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
 // Use Inter font with swap display for better loading
@@ -38,7 +40,9 @@ export default function RootLayout({
                 <div className="flex h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden transition-colors duration-200">
                   <Sidebar />
                   <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900">
+                    <ScrollToTop />
                     {children}
+                    <ScrollToTopButton />
                   </main>
                 </div>
               </LayoutWrapper>
