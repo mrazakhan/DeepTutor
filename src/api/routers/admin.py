@@ -318,45 +318,50 @@ async def daily_usage(request: Request, days: int = 30):
     _require_admin(request)
 
     from datetime import timedelta
-    from sqlalchemy import cast, Date
 
     db = get_db()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_str = cutoff.strftime("%Y-%m-%d")
+
+        # Use substr for SQLite date extraction (avoids cast/Date issues)
+        llm_day = func.substr(LLMUsageLog.created_at, 1, 10)
+        qa_day = func.substr(AssessmentAnswer.created_at, 1, 10)
+        exam_day = func.substr(MockExam.created_at, 1, 10)
 
         # LLM calls per day
         llm_daily = (
             db.query(
-                cast(LLMUsageLog.created_at, Date).label("day"),
+                llm_day.label("day"),
                 func.count(LLMUsageLog.id).label("calls"),
                 func.sum(LLMUsageLog.prompt_tokens + LLMUsageLog.completion_tokens).label("tokens"),
                 func.sum(LLMUsageLog.estimated_cost).label("cost"),
             )
-            .filter(LLMUsageLog.created_at >= cutoff)
-            .group_by(cast(LLMUsageLog.created_at, Date))
-            .order_by(cast(LLMUsageLog.created_at, Date))
+            .filter(llm_day >= cutoff_str)
+            .group_by(llm_day)
+            .order_by(llm_day)
             .all()
         )
 
         # Questions answered per day
         qa_daily = (
             db.query(
-                cast(AssessmentAnswer.created_at, Date).label("day"),
+                qa_day.label("day"),
                 func.count(AssessmentAnswer.id).label("answers"),
             )
-            .filter(AssessmentAnswer.created_at >= cutoff)
-            .group_by(cast(AssessmentAnswer.created_at, Date))
+            .filter(qa_day >= cutoff_str)
+            .group_by(qa_day)
             .all()
         )
 
         # Exams per day
         exam_daily = (
             db.query(
-                cast(MockExam.created_at, Date).label("day"),
+                exam_day.label("day"),
                 func.count(MockExam.id).label("exams"),
             )
-            .filter(MockExam.created_at >= cutoff)
-            .group_by(cast(MockExam.created_at, Date))
+            .filter(exam_day >= cutoff_str)
+            .group_by(exam_day)
             .all()
         )
 
