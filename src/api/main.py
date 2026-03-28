@@ -11,6 +11,7 @@ from src.api.routers import (
     assessment,
     auth,
     chat,
+    counseling,
     exam,
     co_writer,
     config,
@@ -213,6 +214,7 @@ app.include_router(courses.router, prefix="/api/v1/courses", tags=["courses"])
 app.include_router(assessment.router, prefix="/api/v1/courses", tags=["assessment"])
 app.include_router(exam.router, prefix="/api/v1/courses", tags=["exam"])
 app.include_router(tutor.router, prefix="/api/v1/tutor", tags=["tutor"])
+app.include_router(counseling.router, prefix="/api/v1/counseling", tags=["counseling"])
 
 
 @app.get("/")

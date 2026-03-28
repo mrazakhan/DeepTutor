@@ -274,3 +274,18 @@ class LLMUsageLog(Base):
     completion_tokens = Column(Integer, default=0)
     estimated_cost = Column(Float, default=0.0)
     created_at = Column(DateTime, default=utcnow)
+
+
+class CounselingContent(Base):
+    """Pre-built counseling roadmap content per STEM area."""
+
+    __tablename__ = "counseling_content"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    stem_area = Column(String(50), unique=True, nullable=False)  # "cs", "electrical_engineering"
+    display_name = Column(String(100), nullable=False)  # "Computer Science"
+    icon = Column(String(50), nullable=False, default="GraduationCap")  # Lucide icon name
+    description = Column(Text, nullable=True)  # Short blurb for area selector card
+    content = Column(Text, nullable=False)  # JSON blob: grade_data, key_insights, etc.
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
