@@ -535,6 +535,10 @@
   "Key Points": "关键点",
   "After generation, 3-5 key points will be listed here.": "生成后，3-5 个关键点将列在这里。",
   "Podcast Audio": "播客音频",
+
+  "Counseling": "升学规划",
+  "CS Admissions Counseling": "CS名校升学规划",
+  "Strategic roadmap for top CS program admissions": "顶尖CS项目录取战略路线图",
   "Your browser does not support the audio element.": "您的浏览器不支持音频元素。",
   "TTS not configured, script generation only.": "TTS 未配置，仅生成脚本。",
   "After generation, you can play the podcast audio here.": "生成后，您可以在这里播放播客音频。"

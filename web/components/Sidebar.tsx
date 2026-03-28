@@ -15,6 +15,7 @@ import {
   Check,
   X,
   Library,
+  GraduationCap,
   Shield,
   KeyRound,
   Loader2,
@@ -38,6 +39,7 @@ interface NavItem {
 const ALL_NAV_ITEMS: Record<string, { icon: LucideIcon; nameKey: string }> = {
   "/": { icon: Home, nameKey: "Home" },
   "/courses": { icon: Library, nameKey: "AP Courses" },
+  "/counseling": { icon: GraduationCap, nameKey: "Counseling" },
 };
 
 export default function Sidebar() {

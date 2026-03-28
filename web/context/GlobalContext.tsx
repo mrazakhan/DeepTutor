@@ -609,7 +609,7 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
   // --- Sidebar Customization State ---
   const DEFAULT_DESCRIPTION = "✨ AP Academy";
   const DEFAULT_NAV_ORDER: SidebarNavOrder = {
-    start: ["/", "/courses"],
+    start: ["/", "/courses", "/counseling"],
     learnResearch: [],
   };
 
@@ -629,6 +629,15 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
             setSidebarDescriptionState(data.description);
           }
           if (data.nav_order) {
+            // Merge in any new nav items that were added to DEFAULT_NAV_ORDER
+            // but are missing from the saved order (e.g. after adding new pages)
+            const savedStart: string[] = data.nav_order.start || [];
+            const missingItems = DEFAULT_NAV_ORDER.start.filter(
+              (href: string) => !savedStart.includes(href)
+            );
+            if (missingItems.length > 0) {
+              data.nav_order.start = [...savedStart, ...missingItems];
+            }
             setSidebarNavOrderState(data.nav_order);
           }
         }
