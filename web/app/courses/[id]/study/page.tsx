@@ -11,6 +11,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false });
+const DrawingCanvas = dynamic(() => import("@/components/DrawingCanvas"), { ssr: false });
 const StepByStepViewer = dynamic(() => import("@/components/StepByStepViewer"), { ssr: false });
 import {
   ArrowLeft,
@@ -26,6 +27,8 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
+  Pen,
+  Type,
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
@@ -258,6 +261,9 @@ export default function StudyPage({
   const evalScrollRef = useRef<HTMLDivElement>(null);
   const [frqEvalCode, setFrqEvalCode] = useState(""); // snapshot of code at eval time
   const [revealedIssues, setRevealedIssues] = useState(0); // progressive reveal count
+  // FRQ input mode (type vs draw)
+  const [frqInputMode, setFrqInputMode] = useState<"type" | "draw">("type");
+  const drawingCanvasRef = useRef<import("@/components/DrawingCanvas").DrawingCanvasHandle>(null);
   // Inline code editor for non-preloaded FRQ responses
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [inlineEditorCode, setInlineEditorCode] = useState("");
@@ -710,37 +716,71 @@ export default function StudyPage({
     setActiveFRQ(null);
   }
 
-  function handleEvaluateFRQ() {
-    if (!activeFRQ || !frqAnswer.trim()) return;
+  async function handleEvaluateFRQ() {
+    if (!activeFRQ) return;
 
-    // Number lines so the LLM can reference them
-    const numberedCode = frqAnswer
-      .split("\n")
-      .map((line, i) => `${i + 1}: ${line}`)
-      .join("\n");
+    let evalPrompt: string;
+    let imageData: string | null = null;
 
-    const evalPrompt = [
-      "Evaluate my Java code for this FRQ.\n",
-      `**Question:** ${activeFRQ.question}\n`,
-      `**My Code (with line numbers):**\n\`\`\`\n${numberedCode}\n\`\`\`\n`,
-      "Format your response using EXACTLY these section headers (each on its own line preceded by ##):\n",
-      "## Summary",
-      "1-2 sentences on overall quality, followed by **Score: X/Y points**\n",
-      "## Issues",
-      "For EACH issue, write a subsection like:",
-      "### Line N: short title",
-      "Then explain: quote the problematic code, what's wrong, and the fix.",
-      "Use a separate ### for each issue. If no issues, write 'No issues found.'\n",
-      "## Rubric",
-      "Score each rubric point with ✅ or ❌:",
-      `${activeFRQ.rubric || "Standard AP FRQ rubric"}\n`,
-      "## Improvements",
-      "2-3 bullet points for the most important things to study/practice.",
-      "\nIMPORTANT: Always use ### Line N: format for each issue so they can be displayed one at a time.",
-    ].join("\n");
+    if (frqInputMode === "draw") {
+      // Export canvas as base64 PNG
+      if (!drawingCanvasRef.current?.hasContent()) return;
+      const dataUrl = await drawingCanvasRef.current.exportImage();
+      if (!dataUrl) return;
+      imageData = dataUrl;
 
-    // Save code snapshot and stream evaluation into split panel (not chat)
-    setFrqEvalCode(frqAnswer);
+      evalPrompt = [
+        "Evaluate the student's handwritten FRQ answer shown in the attached image.\n",
+        `**Question:** ${activeFRQ.question}\n`,
+        "The student wrote their answer by hand. Please read and evaluate their handwritten response.\n",
+        "Format your response using EXACTLY these section headers (each on its own line preceded by ##):\n",
+        "## Summary",
+        "1-2 sentences on overall quality, followed by **Score: X/Y points**\n",
+        "## Issues",
+        "For EACH issue, write a subsection like:",
+        "### Issue N: short title",
+        "Then explain what's wrong and the fix.",
+        "Use a separate ### for each issue. If no issues, write 'No issues found.'\n",
+        "## Rubric",
+        "Score each rubric point with ✅ or ❌:",
+        `${activeFRQ.rubric || "Standard AP FRQ rubric"}\n`,
+        "## Improvements",
+        "2-3 bullet points for the most important things to study/practice.",
+        "\nIMPORTANT: Always use ### Issue N: format for each issue so they can be displayed one at a time.",
+      ].join("\n");
+
+      setFrqEvalCode("[Handwritten answer]");
+    } else {
+      if (!frqAnswer.trim()) return;
+
+      const numberedCode = frqAnswer
+        .split("\n")
+        .map((line, i) => `${i + 1}: ${line}`)
+        .join("\n");
+
+      evalPrompt = [
+        "Evaluate my Java code for this FRQ.\n",
+        `**Question:** ${activeFRQ.question}\n`,
+        `**My Code (with line numbers):**\n\`\`\`\n${numberedCode}\n\`\`\`\n`,
+        "Format your response using EXACTLY these section headers (each on its own line preceded by ##):\n",
+        "## Summary",
+        "1-2 sentences on overall quality, followed by **Score: X/Y points**\n",
+        "## Issues",
+        "For EACH issue, write a subsection like:",
+        "### Line N: short title",
+        "Then explain: quote the problematic code, what's wrong, and the fix.",
+        "Use a separate ### for each issue. If no issues, write 'No issues found.'\n",
+        "## Rubric",
+        "Score each rubric point with ✅ or ❌:",
+        `${activeFRQ.rubric || "Standard AP FRQ rubric"}\n`,
+        "## Improvements",
+        "2-3 bullet points for the most important things to study/practice.",
+        "\nIMPORTANT: Always use ### Line N: format for each issue so they can be displayed one at a time.",
+      ].join("\n");
+
+      setFrqEvalCode(frqAnswer);
+    }
+
     setFrqEvalResult("");
     setFrqEvalStreaming(true);
     setRevealedIssues(0);
@@ -761,6 +801,7 @@ export default function StudyPage({
         course_id: courseId,
         topic_id: topicId || null,
         user_id: user?.id || null,
+        image_data: imageData,
       }));
     };
 
@@ -2241,15 +2282,57 @@ export default function StudyPage({
                 </button>
               </div>
 
+              {/* Input mode toggle (only for active FRQ) */}
+              {activeFRQ && (
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                  <button
+                    onClick={() => setFrqInputMode("type")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      frqInputMode === "type"
+                        ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                        : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <Type className="w-3.5 h-3.5" />
+                    {t("Type")}
+                  </button>
+                  <button
+                    onClick={() => setFrqInputMode("draw")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      frqInputMode === "draw"
+                        ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                        : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <Pen className="w-3.5 h-3.5" />
+                    {t("Draw")}
+                  </button>
+                  {frqInputMode === "draw" && (
+                    <span className="ml-auto text-[10px] text-slate-400">
+                      Stylus, touch, or mouse
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Editor body */}
               <div className="flex-1 overflow-y-auto p-4">
-                <label className="text-xs text-slate-500 mb-2 block">{t("Write your Java code:")}</label>
-                <CodeEditor
-                  value={activeFRQ ? frqAnswer : inlineEditorCode}
-                  onChange={activeFRQ ? setFrqAnswer : setInlineEditorCode}
-                  language="java"
-                  height="calc(100vh - 320px)"
-                />
+                {frqInputMode === "draw" && activeFRQ ? (
+                  <DrawingCanvas
+                    ref={drawingCanvasRef}
+                    height="calc(100vh - 380px)"
+                  />
+                ) : (
+                  <>
+                    <label className="text-xs text-slate-500 mb-2 block">{t("Write your Java code:")}</label>
+                    <CodeEditor
+                      value={activeFRQ ? frqAnswer : inlineEditorCode}
+                      onChange={activeFRQ ? setFrqAnswer : setInlineEditorCode}
+                      language="java"
+                      height="calc(100vh - 320px)"
+                    />
+                  </>
+                )}
               </div>
 
               {/* Editor actions */}
@@ -2258,10 +2341,10 @@ export default function StudyPage({
                   <>
                     <button
                       onClick={handleEvaluateFRQ}
-                      disabled={!frqAnswer.trim() || frqEvalStreaming}
+                      disabled={frqEvalStreaming || (frqInputMode === "type" ? !frqAnswer.trim() : false)}
                       className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
-                      {t("Evaluate My Code")}
+                      {frqInputMode === "draw" ? t("Evaluate My Answer") : t("Evaluate My Code")}
                     </button>
                     <button
                       onClick={handleSubmitFRQ}

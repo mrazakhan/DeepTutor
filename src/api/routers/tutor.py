@@ -118,6 +118,7 @@ async def websocket_tutor(websocket: WebSocket):
             course_id = data.get("course_id")
             topic_id = data.get("topic_id")
             user_id = data.get("user_id")  # Optional: for user-specific KB
+            image_data = data.get("image_data")  # Optional: base64 PNG for handwritten FRQ
 
             if not course_id:
                 await websocket.send_json({"type": "error", "message": "course_id is required"})
@@ -248,6 +249,7 @@ async def websocket_tutor(websocket: WebSocket):
                     unit_title=unit_title,
                     unit_number=unit_number,
                     stream=True,
+                    image_data=image_data,
                 )
 
                 async for chunk_data in stream_generator:

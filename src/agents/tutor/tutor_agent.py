@@ -219,6 +219,45 @@ class TutorAgent(BaseAgent):
             f"{unit_title} in AP {self.course_name}. What would you like to learn?"
         )
 
+    @staticmethod
+    def _inject_image_into_messages(
+        messages: list[dict], image_data: str, binding: str = "openai"
+    ) -> list[dict]:
+        """Replace the last user message content with multimodal content (text + image)."""
+        result = []
+        for msg in messages:
+            if msg.get("role") == "user" and msg is messages[-1]:
+                # Strip data URI prefix to get raw base64
+                raw_b64 = image_data
+                if raw_b64.startswith("data:"):
+                    raw_b64 = raw_b64.split(",", 1)[1] if "," in raw_b64 else raw_b64
+
+                binding_lower = (binding or "openai").lower()
+                if binding_lower in ("anthropic", "claude"):
+                    content = [
+                        {"type": "text", "text": msg["content"]},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": raw_b64,
+                            },
+                        },
+                    ]
+                else:
+                    content = [
+                        {"type": "text", "text": msg["content"]},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_data},
+                        },
+                    ]
+                result.append({"role": "user", "content": content})
+            else:
+                result.append(msg)
+        return result
+
     async def process(
         self,
         message: str,
@@ -227,6 +266,7 @@ class TutorAgent(BaseAgent):
         unit_title: str = "",
         unit_number: int = 0,
         stream: bool = False,
+        image_data: str | None = None,
     ) -> dict[str, Any] | AsyncGenerator[dict[str, Any], None]:
         history = history or []
         truncated_history = self.truncate_history(history)
@@ -243,6 +283,12 @@ class TutorAgent(BaseAgent):
             unit_title=unit_title,
             unit_number=unit_number,
         )
+
+        # If image_data is provided, inject into the last user message
+        if image_data:
+            messages = self._inject_image_into_messages(
+                messages, image_data, self.binding or "openai"
+            )
 
         if stream:
             async def stream_generator():

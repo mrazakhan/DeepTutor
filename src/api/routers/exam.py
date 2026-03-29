@@ -831,21 +831,37 @@ async def _evaluate_frqs(exam_id: str, frq_question_ids: list, course):
             qdata = json.loads(q.question_data)
             rubric = qdata.get("rubric", "Standard AP FRQ rubric (9 points)")
 
-            eval_prompt = (
-                f"Evaluate this AP {course.name} FRQ submission.\n\n"
-                f"**Question:**\n{qdata['question']}\n\n"
-                f"**Student Code:**\n```java\n{q.student_answer}\n```\n\n"
-                f"**Rubric:**\n{rubric}\n\n"
-                f"Score each rubric point with ✅ or ❌.\n"
-                f"End with **Score: X/9** where X is the total points earned.\n"
-                f"Return JSON: {{\"score\": X, \"max_score\": 9, \"feedback\": \"detailed evaluation\"}}"
-            )
+            # Check if answer is a handwritten drawing
+            image_data = None
+            if q.student_answer.startswith("[DRAWING]"):
+                image_data = q.student_answer[len("[DRAWING]"):]
+                eval_prompt = (
+                    f"Evaluate this AP {course.name} FRQ submission.\n\n"
+                    f"**Question:**\n{qdata['question']}\n\n"
+                    f"The student's handwritten answer is shown in the attached image. "
+                    f"Please read and evaluate their handwritten response.\n\n"
+                    f"**Rubric:**\n{rubric}\n\n"
+                    f"Score each rubric point with ✅ or ❌.\n"
+                    f"End with **Score: X/9** where X is the total points earned.\n"
+                    f"Return JSON: {{\"score\": X, \"max_score\": 9, \"feedback\": \"detailed evaluation\"}}"
+                )
+            else:
+                eval_prompt = (
+                    f"Evaluate this AP {course.name} FRQ submission.\n\n"
+                    f"**Question:**\n{qdata['question']}\n\n"
+                    f"**Student Code:**\n```java\n{q.student_answer}\n```\n\n"
+                    f"**Rubric:**\n{rubric}\n\n"
+                    f"Score each rubric point with ✅ or ❌.\n"
+                    f"End with **Score: X/9** where X is the total points earned.\n"
+                    f"Return JSON: {{\"score\": X, \"max_score\": 9, \"feedback\": \"detailed evaluation\"}}"
+                )
 
             try:
                 result = await agent.process(
                     message=eval_prompt, history=[], stream=False,
                     topic_title="FRQ Evaluation", unit_title="Mock Exam",
                     unit_number=0,
+                    image_data=image_data,
                 )
                 response = result.get("response", "")
                 parsed = _parse_json_response(response)

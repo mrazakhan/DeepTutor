@@ -17,12 +17,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   Send,
+  Pen,
+  Type,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { processLatexContent } from "@/lib/latex";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false });
+const DrawingCanvas = dynamic(() => import("@/components/DrawingCanvas"), { ssr: false });
 
 interface ExamQuestion {
   id: string;
@@ -59,6 +62,8 @@ export default function ExamTakingPage({ params }: { params: Promise<{ id: strin
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const saveRef = useRef<NodeJS.Timeout | null>(null);
+  const [frqInputMode, setFrqInputMode] = useState<"type" | "draw">("type");
+  const examCanvasRef = useRef<import("@/components/DrawingCanvas").DrawingCanvasHandle>(null);
 
   const headers = useCallback(() => {
     const token = localStorage.getItem("deeptutor_token");
@@ -140,6 +145,17 @@ export default function ExamTakingPage({ params }: { params: Promise<{ id: strin
   function handleAnswer(questionId: string, answer: string) {
     setAnswers((prev) => ({ ...prev, [questionId]: answer }));
     debounceSave(questionId, answer);
+  }
+
+  // Save canvas drawing as base64 for exam auto-save
+  async function handleSaveDrawing(questionId: string) {
+    if (!examCanvasRef.current?.hasContent()) return;
+    const dataUrl = await examCanvasRef.current.exportImage();
+    if (dataUrl) {
+      const answer = `[DRAWING]${dataUrl}`;
+      setAnswers((prev) => ({ ...prev, [questionId]: answer }));
+      debounceSave(questionId, answer);
+    }
   }
 
   function handleFlag(questionId: string) {
@@ -361,14 +377,53 @@ export default function ExamTakingPage({ params }: { params: Promise<{ id: strin
                         {processLatexContent(qd.question || "")}
                       </ReactMarkdown>
                     </div>
+
+                    {/* Type / Draw toggle */}
+                    <div className="flex items-center gap-1 mb-3">
+                      <button
+                        onClick={() => setFrqInputMode("type")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          frqInputMode === "type"
+                            ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                            : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        }`}
+                      >
+                        <Type className="w-3.5 h-3.5" />
+                        Type
+                      </button>
+                      <button
+                        onClick={() => setFrqInputMode("draw")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          frqInputMode === "draw"
+                            ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                            : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        }`}
+                      >
+                        <Pen className="w-3.5 h-3.5" />
+                        Draw
+                      </button>
+                      {frqInputMode === "draw" && (
+                        <span className="ml-auto text-[10px] text-slate-400">Stylus, touch, or mouse</span>
+                      )}
+                    </div>
+
                     <div className="mb-2">
-                      <label className="text-xs text-slate-500 mb-2 block">Write your Java code:</label>
-                      <CodeEditor
-                        value={code}
-                        onChange={(v) => handleAnswer(currentQuestion.id, v)}
-                        language="java"
-                        height="350px"
-                      />
+                      {frqInputMode === "draw" ? (
+                        <DrawingCanvas
+                          ref={examCanvasRef}
+                          height="350px"
+                        />
+                      ) : (
+                        <>
+                          <label className="text-xs text-slate-500 mb-2 block">Write your Java code:</label>
+                          <CodeEditor
+                            value={code}
+                            onChange={(v) => handleAnswer(currentQuestion.id, v)}
+                            language="java"
+                            height="350px"
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 );
