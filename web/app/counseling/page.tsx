@@ -195,7 +195,7 @@ export default function CounselingPage() {
   const [showResumeSection, setShowResumeSection] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getAuthHeaders = () => {
+  const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem("deeptutor_token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
