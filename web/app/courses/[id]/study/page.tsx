@@ -263,7 +263,7 @@ export default function StudyPage({
   const [revealedIssues, setRevealedIssues] = useState(0); // progressive reveal count
   // FRQ input mode (type vs draw)
   const [frqInputMode, setFrqInputMode] = useState<"type" | "draw">("type");
-  const drawingCanvasRef = useRef<import("@/components/DrawingCanvas").DrawingCanvasHandle>(null);
+  const drawingCanvasRef = useRef<{ exportImage: () => Promise<string>; clearCanvas: () => void } | null>(null);
   // Inline code editor for non-preloaded FRQ responses
   const [showInlineEditor, setShowInlineEditor] = useState(false);
   const [inlineEditorCode, setInlineEditorCode] = useState("");
@@ -724,9 +724,15 @@ export default function StudyPage({
 
     if (frqInputMode === "draw") {
       // Export canvas as base64 PNG
-      if (!drawingCanvasRef.current?.hasContent()) return;
+      if (!drawingCanvasRef.current) {
+        console.error("Canvas ref not available");
+        return;
+      }
       const dataUrl = await drawingCanvasRef.current.exportImage();
-      if (!dataUrl) return;
+      if (!dataUrl) {
+        console.error("Canvas export returned empty");
+        return;
+      }
       imageData = dataUrl;
 
       evalPrompt = [

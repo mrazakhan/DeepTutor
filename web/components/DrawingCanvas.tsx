@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useImperativeHandle, forwardRef, useState, useCallback } from "react";
+import React, { useRef, useImperativeHandle, forwardRef, useState } from "react";
 import { ReactSketchCanvas, type ReactSketchCanvasRef } from "react-sketch-canvas";
 import {
   Pen,
@@ -15,7 +15,6 @@ import {
 export interface DrawingCanvasHandle {
   exportImage: () => Promise<string>;
   clearCanvas: () => void;
-  hasContent: () => boolean;
 }
 
 interface DrawingCanvasProps {
@@ -42,24 +41,26 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
     const [strokeColor, setStrokeColor] = useState("#000000");
     const [strokeWidth, setStrokeWidth] = useState(4);
     const [isEraser, setIsEraser] = useState(false);
-    const [hasDrawn, setHasDrawn] = useState(false);
 
     useImperativeHandle(ref, () => ({
       exportImage: async () => {
-        if (!canvasRef.current) return "";
-        const dataUrl = await canvasRef.current.exportImage("png");
-        return dataUrl; // returns "data:image/png;base64,..."
+        if (!canvasRef.current) {
+          console.warn("DrawingCanvas: canvasRef is null");
+          return "";
+        }
+        try {
+          // exportImage returns a data:image/png;base64,... string
+          const dataUrl = await canvasRef.current.exportImage("png");
+          return dataUrl || "";
+        } catch (err) {
+          console.error("DrawingCanvas: export failed", err);
+          return "";
+        }
       },
       clearCanvas: () => {
         canvasRef.current?.clearCanvas();
-        setHasDrawn(false);
       },
-      hasContent: () => hasDrawn,
     }));
-
-    const handleStroke = useCallback(() => {
-      if (!hasDrawn) setHasDrawn(true);
-    }, [hasDrawn]);
 
     const toggleEraser = () => {
       if (isEraser) {
@@ -168,7 +169,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
                 <Redo2 className="w-4 h-4" />
               </button>
               <button
-                onClick={() => { canvasRef.current?.clearCanvas(); setHasDrawn(false); }}
+                onClick={() => canvasRef.current?.clearCanvas()}
                 className="p-1.5 rounded-md text-slate-500 hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 transition-colors"
                 title="Clear"
               >
@@ -188,14 +189,13 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
             strokeWidth={strokeWidth}
             strokeColor={strokeColor}
             eraserWidth={20}
-            canvasColor="transparent"
+            canvasColor="white"
             style={{
               border: "none",
               borderRadius: 0,
               width: "100%",
               height: "100%",
             }}
-            onStroke={handleStroke}
             allowOnlyPointerType="all"
           />
         </div>

@@ -63,7 +63,7 @@ export default function ExamTakingPage({ params }: { params: Promise<{ id: strin
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const saveRef = useRef<NodeJS.Timeout | null>(null);
   const [frqInputMode, setFrqInputMode] = useState<"type" | "draw">("type");
-  const examCanvasRef = useRef<import("@/components/DrawingCanvas").DrawingCanvasHandle>(null);
+  const examCanvasRef = useRef<{ exportImage: () => Promise<string>; clearCanvas: () => void } | null>(null);
 
   const headers = useCallback(() => {
     const token = localStorage.getItem("deeptutor_token");
@@ -149,7 +149,7 @@ export default function ExamTakingPage({ params }: { params: Promise<{ id: strin
 
   // Save canvas drawing as base64 for exam auto-save
   async function handleSaveDrawing(questionId: string) {
-    if (!examCanvasRef.current?.hasContent()) return;
+    if (!examCanvasRef.current) return;
     const dataUrl = await examCanvasRef.current.exportImage();
     if (dataUrl) {
       const answer = `[DRAWING]${dataUrl}`;
