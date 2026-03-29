@@ -1590,34 +1590,53 @@ export default function StudyPage({
                         {processLatexContent(q.question)}
                       </ReactMarkdown>
                     </div>
-                    <div className="space-y-2 mb-4">
+                    <div className="space-y-2.5 mb-5">
                       {Object.entries(q.options).map(([letter, text]) => {
                         const isSelected = selectedAnswer === letter;
                         const isSubmitted = showMCQExplanation;
                         const isCorrect = letter === q.correct;
-                        let btnClass = "border-slate-200 dark:border-slate-600 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10";
+                        const letterColors: Record<string, string> = {
+                          A: "from-blue-500 to-blue-600",
+                          B: "from-violet-500 to-violet-600",
+                          C: "from-emerald-500 to-emerald-600",
+                          D: "from-amber-500 to-amber-600",
+                        };
+
+                        let btnClass = "border-slate-200 dark:border-slate-600/50 hover:border-purple-300 dark:hover:border-purple-500/50 hover:shadow-md hover:scale-[1.005] bg-slate-50/50 dark:bg-slate-700/30";
+                        let letterBg = `from-slate-400 to-slate-500 dark:from-slate-500 dark:to-slate-600 group-hover:from-purple-400 group-hover:to-purple-500`;
                         if (isSubmitted && isCorrect) {
-                          btnClass = "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500";
+                          btnClass = "border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-md shadow-emerald-500/10 scale-[1.01]";
+                          letterBg = "from-emerald-500 to-emerald-600";
                         } else if (isSubmitted && isSelected && !isCorrect) {
-                          btnClass = "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 ring-1 ring-red-400";
+                          btnClass = "border-2 border-red-400 bg-red-50 dark:bg-red-900/20 shadow-md shadow-red-500/10";
+                          letterBg = "from-red-500 to-red-600";
                         } else if (isSelected) {
-                          btnClass = "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 ring-1 ring-purple-500";
+                          btnClass = "border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-md shadow-purple-500/10 scale-[1.01]";
+                          letterBg = letterColors[letter] || "from-purple-500 to-purple-600";
                         }
                         return (
                           <button
                             key={letter}
                             onClick={() => !showMCQExplanation && handleAnswerSelect(letter)}
                             disabled={showMCQExplanation}
-                            className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${btnClass}`}
+                            className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm transition-all duration-200 group ${btnClass}`}
                           >
-                            <span className="font-semibold mr-2">({letter})</span>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
-                              components={{ p: ({ children }) => <span>{children}</span> }}
-                            >
-                              {processLatexContent(text)}
-                            </ReactMarkdown>
+                            <div className="flex items-start gap-3">
+                              <span className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br ${letterBg} transition-all shadow-sm`}>
+                                {letter}
+                              </span>
+                              <span className="flex-1 pt-0.5">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm, remarkMath]}
+                                  rehypePlugins={[rehypeKatex]}
+                                  components={{ p: ({ children }) => <span>{children}</span> }}
+                                >
+                                  {processLatexContent(text)}
+                                </ReactMarkdown>
+                              </span>
+                              {isSubmitted && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />}
+                              {isSubmitted && isSelected && !isCorrect && <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />}
+                            </div>
                           </button>
                         );
                       })}
@@ -1775,54 +1794,101 @@ export default function StudyPage({
         {/* Interactive MCQ */}
         {activeMCQ && !showMCQExplanation && !assessmentMode && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Bot className="w-4 h-4 text-blue-500" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-blue-500/20">
+              <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-medium text-blue-500 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
-                  {chatMcqMode ? "Practice Question" : `MCQ ${mcqIndex + 1} of ${preloadedContent?.practice_mcq?.length || 1}`}
-                </span>
+            <div className="max-w-[85%] rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm">
+              {/* Header with progress */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-500 px-3 py-1 rounded-full shadow-sm">
+                    {chatMcqMode ? "Practice" : `${mcqIndex + 1} / ${sessionMcqs.length}`}
+                  </span>
+                  {!chatMcqMode && (
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      {sessionMcqs.length < (preloadedContent?.practice_mcq?.length || 0) ? `of ${preloadedContent?.practice_mcq?.length} total` : ""}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
+
+              {/* Progress bar */}
+              {!chatMcqMode && sessionMcqs.length > 1 && (
+                <div className="h-1 bg-slate-100 dark:bg-slate-700 rounded-full mb-4 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500"
+                    style={{ width: `${((mcqIndex + 1) / sessionMcqs.length) * 100}%` }}
+                  />
+                </div>
+              )}
+
+              {/* Question */}
+              <div className="prose prose-sm dark:prose-invert max-w-none mb-5">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {processLatexContent(activeMCQ.question)}
                 </ReactMarkdown>
               </div>
-              <div className="space-y-2 mb-4">
-                {Object.entries(activeMCQ.options).map(([letter, text]) => (
-                  <button
-                    key={letter}
-                    onClick={() => handleAnswerSelect(letter)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
-                      selectedAnswer === letter
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500"
-                        : "border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/10"
-                    }`}
-                  >
-                    <span className="font-semibold mr-2">({letter})</span>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                      components={{ p: ({ children }) => <span>{children}</span> }}
+
+              {/* Answer options */}
+              <div className="space-y-2.5 mb-5">
+                {Object.entries(activeMCQ.options).map(([letter, text]) => {
+                  const isSelected = selectedAnswer === letter;
+                  const letterColors: Record<string, string> = {
+                    A: "from-blue-500 to-blue-600",
+                    B: "from-violet-500 to-violet-600",
+                    C: "from-emerald-500 to-emerald-600",
+                    D: "from-amber-500 to-amber-600",
+                  };
+                  return (
+                    <button
+                      key={letter}
+                      onClick={() => handleAnswerSelect(letter)}
+                      className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm transition-all duration-200 group ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md shadow-blue-500/10 scale-[1.01]"
+                          : "border-slate-200 dark:border-slate-600/50 hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md hover:scale-[1.005] bg-slate-50/50 dark:bg-slate-700/30"
+                      }`}
                     >
-                      {processLatexContent(text)}
-                    </ReactMarkdown>
-                  </button>
-                ))}
+                      <div className="flex items-start gap-3">
+                        <span className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br ${
+                          isSelected ? letterColors[letter] || "from-blue-500 to-blue-600" : "from-slate-400 to-slate-500 dark:from-slate-500 dark:to-slate-600 group-hover:from-blue-400 group-hover:to-blue-500"
+                        } transition-all shadow-sm`}>
+                          {letter}
+                        </span>
+                        <span className="flex-1 pt-0.5">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={{ p: ({ children }) => <span>{children}</span> }}
+                          >
+                            {processLatexContent(text)}
+                          </ReactMarkdown>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Submit button */}
+              <div className="flex items-center gap-3">
                 <button
                   onClick={chatMcqMode ? handleSubmitChatMCQ : handleSubmitMCQ}
                   disabled={!selectedAnswer}
-                  className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 dark:disabled:from-slate-600 dark:disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-500/20 disabled:shadow-none"
                 >
                   {t("Submit Answer")}
                 </button>
+                {selectedAnswer && (
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                    Selected: {selectedAnswer}
+                  </span>
+                )}
               </div>
+
               {/* Trailing guidance text for chat-generated MCQs */}
               {chatMcqMode && chatMcqTrailing && (
-                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 prose prose-sm dark:prose-invert max-w-none text-slate-500 dark:text-slate-400">
+                <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 prose prose-sm dark:prose-invert max-w-none text-slate-500 dark:text-slate-400">
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                     {processLatexContent(chatMcqTrailing)}
                   </ReactMarkdown>
