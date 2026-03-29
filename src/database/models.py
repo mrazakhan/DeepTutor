@@ -289,3 +289,18 @@ class CounselingContent(Base):
     content = Column(Text, nullable=False)  # JSON blob: grade_data, key_insights, etc.
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class CounselingResume(Base):
+    """User-uploaded resume for personalized counseling analysis."""
+
+    __tablename__ = "counseling_resume"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    filename = Column(String(255), nullable=False)
+    extracted_text = Column(Text, nullable=False)
+    stem_area = Column(String(50), nullable=True)  # last analyzed area
+    analysis = Column(Text, nullable=True)  # cached LLM analysis
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

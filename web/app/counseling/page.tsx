@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   GraduationCap,
@@ -23,6 +23,10 @@ import {
   Building2,
   Microscope,
   Atom,
+  Upload,
+  X,
+  Trash2,
+  UserCircle,
   type LucideIcon,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
@@ -179,6 +183,119 @@ export default function CounselingPage() {
   const [contentLoading, setContentLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<GradeTab>("big-picture");
 
+  // Resume state
+  const [resumeStatus, setResumeStatus] = useState<{
+    has_resume: boolean;
+    filename?: string;
+    has_analysis?: boolean;
+  }>({ has_resume: false });
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [analysisText, setAnalysisText] = useState("");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [showResumeSection, setShowResumeSection] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("deeptutor_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  // Check resume status when area is selected
+  const checkResumeStatus = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl("/api/v1/counseling/resume/status"), {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResumeStatus(data);
+      }
+    } catch (e) {
+      console.error("Failed to check resume status:", e);
+    }
+  }, []);
+
+  const handleResumeUpload = async (file: File) => {
+    if (!selectedArea) return;
+    setResumeUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("stem_area", selectedArea);
+      const res = await fetch(apiUrl("/api/v1/counseling/resume/upload"), {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: formData,
+      });
+      if (res.ok) {
+        await checkResumeStatus();
+        setAnalysisText(""); // Clear old analysis
+      }
+    } catch (e) {
+      console.error("Failed to upload resume:", e);
+    } finally {
+      setResumeUploading(false);
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    try {
+      const res = await fetch(apiUrl("/api/v1/counseling/resume"), {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        setResumeStatus({ has_resume: false });
+        setAnalysisText("");
+        setShowResumeSection(false);
+      }
+    } catch (e) {
+      console.error("Failed to delete resume:", e);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!selectedArea) return;
+    setAnalysisLoading(true);
+    setAnalysisText("");
+    try {
+      const res = await fetch(
+        apiUrl(`/api/v1/counseling/resume/analyze/${selectedArea}`),
+        { headers: getAuthHeaders() }
+      );
+      if (!res.ok) throw new Error("Analysis failed");
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === "chunk") {
+                setAnalysisText((prev) => prev + event.content);
+              } else if (event.type === "error") {
+                setAnalysisText((prev) => prev + "\n\n⚠️ Error: " + event.content);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Analysis failed:", e);
+      setAnalysisText("Failed to generate analysis. Please try again.");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   // Fetch available areas on mount
   useEffect(() => {
     async function fetchAreas() {
@@ -203,10 +320,15 @@ export default function CounselingPage() {
     setSelectedAreaMeta(area);
     setContentLoading(true);
     setActiveTab("big-picture");
+    setAnalysisText("");
+    setShowResumeSection(false);
     try {
-      const res = await fetch(apiUrl(`/api/v1/counseling/content/${area.stem_area}`));
-      if (res.ok) {
-        const data = await res.json();
+      const [contentRes] = await Promise.all([
+        fetch(apiUrl(`/api/v1/counseling/content/${area.stem_area}`)),
+        checkResumeStatus(),
+      ]);
+      if (contentRes.ok) {
+        const data = await contentRes.json();
         setContent(data.content);
       }
     } catch (e) {
@@ -214,7 +336,7 @@ export default function CounselingPage() {
     } finally {
       setContentLoading(false);
     }
-  }, []);
+  }, [checkResumeStatus]);
 
   const goBack = () => {
     setSelectedArea(null);
@@ -540,6 +662,156 @@ export default function CounselingPage() {
                 {tab.label}
               </button>
             ))}
+          </div>
+
+          {/* Resume Upload Section */}
+          <div className="mb-6">
+            {!showResumeSection ? (
+              <button
+                onClick={() => setShowResumeSection(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-sm text-blue-600 dark:text-blue-400 font-medium w-full justify-center"
+              >
+                <UserCircle className="w-4 h-4" />
+                {resumeStatus.has_resume
+                  ? `Resume uploaded: ${resumeStatus.filename} — Get personalized analysis`
+                  : "Upload your resume for personalized counseling"}
+              </button>
+            ) : (
+              <div className="p-4 sm:p-5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <UserCircle className="w-5 h-5 text-blue-500" />
+                    Personalized Counseling
+                  </h3>
+                  <button
+                    onClick={() => setShowResumeSection(false)}
+                    className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {!resumeStatus.has_resume ? (
+                  /* Upload zone */
+                  <div
+                    className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 sm:p-8 text-center cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files[0];
+                      if (file) handleResumeUpload(file);
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.docx,.doc,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleResumeUpload(file);
+                      }}
+                    />
+                    {resumeUploading ? (
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
+                    ) : (
+                      <>
+                        <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          Drop your resume here or <span className="text-blue-500 font-medium">browse</span>
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">PDF, DOCX, or TXT (max 10 MB)</p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  /* Resume uploaded — show file info + analyze button */
+                  <div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        <span className="text-sm text-slate-700 dark:text-slate-300 truncate">
+                          {resumeStatus.filename}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-xs text-blue-500 hover:text-blue-600 px-2 py-1"
+                        >
+                          Replace
+                        </button>
+                        <button
+                          onClick={handleDeleteResume}
+                          className="p-1 text-red-400 hover:text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.docx,.doc,.txt"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleResumeUpload(file);
+                        }}
+                      />
+                    </div>
+
+                    {!analysisText && !analysisLoading && (
+                      <button
+                        onClick={handleAnalyze}
+                        className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-white font-medium text-sm hover:from-blue-600 hover:to-violet-600 transition-all shadow-sm"
+                      >
+                        ✨ Get Personalized Analysis
+                      </button>
+                    )}
+
+                    {analysisLoading && !analysisText && (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-500 mr-2" />
+                        <span className="text-sm text-slate-500">Analyzing your profile...</span>
+                      </div>
+                    )}
+
+                    {analysisText && (
+                      <div className="mt-3 p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-h-[60vh] overflow-y-auto">
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          {analysisText.split("\n").map((line, i) => {
+                            if (line.startsWith("## ")) {
+                              return <h2 key={i} className="text-lg font-bold mt-4 mb-2 text-slate-900 dark:text-slate-100">{line.replace("## ", "")}</h2>;
+                            } else if (line.startsWith("### ")) {
+                              return <h3 key={i} className="text-base font-semibold mt-3 mb-1 text-slate-800 dark:text-slate-200">{line.replace("### ", "")}</h3>;
+                            } else if (line.startsWith("- ") || line.startsWith("* ")) {
+                              return <li key={i} className="text-slate-600 dark:text-slate-400 ml-4 list-disc">{line.slice(2)}</li>;
+                            } else if (line.match(/^\d+\. /)) {
+                              return <li key={i} className="text-slate-600 dark:text-slate-400 ml-4 list-decimal">{line.replace(/^\d+\. /, "")}</li>;
+                            } else if (line.startsWith("**") && line.endsWith("**")) {
+                              return <p key={i} className="font-semibold text-slate-800 dark:text-slate-200 mt-2">{line.replace(/\*\*/g, "")}</p>;
+                            } else if (line.trim() === "") {
+                              return <div key={i} className="h-2" />;
+                            }
+                            return <p key={i} className="text-slate-600 dark:text-slate-400 leading-relaxed">{line}</p>;
+                          })}
+                        </div>
+                        {!analysisLoading && (
+                          <button
+                            onClick={handleAnalyze}
+                            className="mt-4 text-sm text-blue-500 hover:text-blue-600 font-medium"
+                          >
+                            🔄 Regenerate Analysis
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Tab Content */}
