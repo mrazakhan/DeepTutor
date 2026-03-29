@@ -23,6 +23,22 @@ interface DrawingCanvasProps {
   className?: string;
 }
 
+// Lined paper background as inline SVG data URL
+const LINED_BG = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40">
+  <line x1="0" y1="39" x2="100" y2="39" stroke="#d1d5db" stroke-width="0.5"/>
+</svg>
+`)}`;
+
+const GRID_BG = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">
+  <line x1="0" y1="39.5" x2="40" y2="39.5" stroke="#e5e7eb" stroke-width="0.5"/>
+  <line x1="39.5" y1="0" x2="39.5" y2="40" stroke="#e5e7eb" stroke-width="0.5"/>
+</svg>
+`)}`;
+
+type PaperStyle = "blank" | "lined" | "grid";
+
 const COLORS = [
   { name: "Black", value: "#000000" },
   { name: "Blue", value: "#2563eb" },
@@ -41,6 +57,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
     const [strokeColor, setStrokeColor] = useState("#000000");
     const [strokeWidth, setStrokeWidth] = useState(4);
     const [isEraser, setIsEraser] = useState(false);
+    const [paperStyle, setPaperStyle] = useState<PaperStyle>("lined");
 
     useImperativeHandle(ref, () => ({
       exportImage: async () => {
@@ -152,6 +169,30 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
             {/* Divider */}
             <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1" />
 
+            {/* Paper style */}
+            <div className="flex items-center gap-0.5 mr-2">
+              {([
+                { key: "lined" as PaperStyle, label: "Lined" },
+                { key: "grid" as PaperStyle, label: "Grid" },
+                { key: "blank" as PaperStyle, label: "Blank" },
+              ]).map((ps) => (
+                <button
+                  key={ps.key}
+                  onClick={() => setPaperStyle(ps.key)}
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                    paperStyle === ps.key
+                      ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
+                      : "text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {ps.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1" />
+
             {/* Undo / Redo / Clear */}
             <div className="flex items-center gap-0.5">
               <button
@@ -190,6 +231,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
             strokeColor={strokeColor}
             eraserWidth={20}
             canvasColor="white"
+            backgroundImage={paperStyle === "lined" ? LINED_BG : paperStyle === "grid" ? GRID_BG : undefined}
+            preserveBackgroundImageAspectRatio="none"
             style={{
               border: "none",
               borderRadius: 0,
