@@ -62,10 +62,17 @@ interface UnitInfo {
   title: string;
 }
 
+interface ExamFormat {
+  type?: string;
+  sections?: { name: string; type?: string; count?: number }[];
+  weight?: { mcq: number; frq: number };
+}
+
 interface CourseInfo {
   id: string;
   code: string;
   name: string;
+  exam_format?: ExamFormat | null;
 }
 
 interface MCQuestion {
@@ -337,7 +344,7 @@ export default function StudyPage({
         const res = await fetch(apiUrl(`/api/v1/courses/${courseId}`));
         if (!res.ok) throw new Error("Not found");
         const data = await res.json();
-        setCourse({ id: data.id, code: data.code, name: data.name });
+        setCourse({ id: data.id, code: data.code, name: data.name, exam_format: data.exam_format || null });
 
         // Find the unit, topic, and next topic
         const allTopics: { id: string; unitId: string; topicNumber: string; title: string }[] = [];
@@ -1317,11 +1324,24 @@ export default function StudyPage({
               {t("Choose how you'd like to study")}
             </p>
             <div className="grid grid-cols-3 gap-3 max-w-2xl w-full mb-4">
-              {SUGGESTION_KEYS.map(({ label, shortLabel, desc, key, color }) => {
-                if (key === "practice_frq" && preloadedContent && !preloadedContent.practice_frq?.length) {
-                  return null;
-                }
+              {SUGGESTION_KEYS.filter(({ key }) => {
+                // Filter study modes based on course exam format
+                const ef = course?.exam_format;
+                const isAP = course?.code?.startsWith("AP_");
+                const hasMcq = ef?.weight?.mcq !== 0; // default true unless explicitly 0
+                const hasFrq = ef?.weight?.frq !== 0;
+
+                if (key === "practice_mcq" && ef && !hasMcq) return false;
+                if (key === "practice_frq" && preloadedContent && !preloadedContent.practice_frq?.length) return false;
+                if (key === "practice_frq" && ef && !hasFrq) return false;
+                if (key === "exam" && !isAP) return false; // "AP Exam Tips" only for AP courses
+                return true;
+              }).map(({ label, shortLabel: rawShortLabel, desc: rawDesc, key, color }) => {
+                const isContest = course?.exam_format?.type === "programming_contest";
                 const text = label(topic?.title || "this topic");
+                // Dynamic labels for non-AP courses
+                const shortLabel = (key === "practice_frq" && isContest) ? "Solve Problems" : rawShortLabel;
+                const desc = (key === "practice_frq" && isContest) ? "Programming challenges" : rawDesc;
                 let hasPreloaded = false;
                 let count = 0;
                 if (preloadedContent) {
@@ -1384,8 +1404,8 @@ export default function StudyPage({
                   </button>
                 );
               })}
-              {/* Assessment card */}
-              {preloadedContent?.practice_mcq && preloadedContent.practice_mcq.length > 0 && (
+              {/* Assessment card — only for courses with MCQs */}
+              {course?.exam_format?.weight?.mcq !== 0 && preloadedContent?.practice_mcq && preloadedContent.practice_mcq.length > 0 && (
                 <button
                   onClick={() => {
                     const allMcqs = (preloadedContent?.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
