@@ -33,10 +33,10 @@ CS_DATA = {
                 "color": "emerald",
                 "academics": [
                     {
-                        "title": "AP Computer Science A",
-                        "description": "Your first AP. Aim for a 5. This is the baseline signal that you're serious about CS.",
+                        "title": "AP Computer Science Principles",
+                        "description": "The introductory AP CS course — a strong starting point that covers big ideas in computing, data, and the internet. Aim for a 5.",
                         "icon": "Code",
-                        "tags": ["AP Exam", "Java"],
+                        "tags": ["AP Exam", "Intro CS"],
                     },
                     {
                         "title": "Honors/AP Math Track",
@@ -112,6 +112,12 @@ CS_DATA = {
                 "color": "blue",
                 "academics": [
                     {
+                        "title": "AP Computer Science A",
+                        "description": "The rigorous, programming-focused AP. Java, data structures, algorithms. This is the course that signals you're serious about CS. Aim for a 5.",
+                        "icon": "Code",
+                        "tags": ["AP Exam", "Java"],
+                    },
+                    {
                         "title": "AP Calculus BC",
                         "description": "Essential for top CS schools. Take BC directly if possible. Score of 5 expected.",
                         "icon": "BookOpen",
@@ -122,12 +128,6 @@ CS_DATA = {
                         "description": "Shows quantitative depth. Pairs well with CS for MIT/Caltech applications.",
                         "icon": "FlaskConical",
                         "tags": ["AP Exam", "Science"],
-                    },
-                    {
-                        "title": "AP CS Principles or AP Statistics",
-                        "description": "Easy 5. Frees up bandwidth for competitions and projects. Take whichever fits your schedule.",
-                        "icon": "Code",
-                        "tags": ["AP Exam"],
                     },
                 ],
                 "competitions": [
@@ -307,7 +307,7 @@ CS_DATA = {
                 "summer": [
                     {
                         "title": "Early Decision / Early Action (Nov 1)",
-                        "description": "Apply EA to MIT and Caltech (both non-binding). Apply ED to CMU SCS if it's your top choice. Stanford REA if Stanford is #1.",
+                        "description": "Apply EA to MIT and Caltech (both non-binding). Apply ED to CMU SCS if it's your top choice. Stanford Restrictive Early Action if Stanford is #1.",
                         "icon": "Target",
                         "tags": ["Applications", "Critical"],
                     },
@@ -364,8 +364,8 @@ CS_DATA = {
             },
         ],
         "ap_course_timeline": [
-            {"grade": "9th", "courses": ["AP Computer Science A"]},
-            {"grade": "10th", "courses": ["AP Calculus BC", "AP Physics C: Mechanics", "AP CS Principles or AP Statistics"]},
+            {"grade": "9th", "courses": ["AP Computer Science Principles"]},
+            {"grade": "10th", "courses": ["AP Computer Science A", "AP Calculus BC", "AP Physics C: Mechanics"]},
             {"grade": "11th", "courses": ["AP Physics C: E&M", "AP English Language", "AP US History", "Multivariable Calculus / Linear Algebra (dual enrollment)"]},
             {"grade": "12th", "courses": ["AP Chemistry or AP Biology", "Additional APs as available"]},
         ],
@@ -393,9 +393,11 @@ CS_DATA = {
         ],
         "target_schools": [
             {"school": "MIT", "program": "EECS (6-3)", "strategy": "EA non-binding. Loves builders and USACO Platinum. Show genuine fit with MIT culture.", "deadline": "Nov 1 EA"},
-            {"school": "Stanford", "program": "Computer Science", "strategy": "REA (binding-ish). Looks for intellectual vitality and impact. Essays matter enormously.", "deadline": "Nov 1 REA"},
-            {"school": "CMU", "program": "School of Computer Science", "strategy": "Apply directly to SCS. ED available if CMU is your top choice. Research specific sub-programs.", "deadline": "Nov 1 ED / Jan 5 RD"},
+            {"school": "Stanford", "program": "Computer Science", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Looks for intellectual vitality and impact. Essays matter enormously.", "deadline": "Nov 1 REA"},
+            {"school": "CMU", "program": "School of Computer Science", "strategy": "Apply directly to SCS. ED available if CMU is your top choice. Research specific sub-programs (CS, AI, HCI).", "deadline": "Nov 1 ED / Jan 5 RD"},
+            {"school": "UC Berkeley", "program": "EECS (College of Engineering)", "strategy": "Apply directly to EECS in the College of Engineering (not L&S CS). Strong emphasis on GPA, test scores, and essays showing leadership and impact.", "deadline": "Nov 30 UC"},
             {"school": "Caltech", "program": "Computer Science", "strategy": "EA non-binding. Smallest class — very research-focused. Math strength is essential.", "deadline": "Nov 1 EA"},
+            {"school": "UIUC", "program": "CS @ Grainger Engineering", "strategy": "Apply directly to CS in Grainger. One of the largest and most respected CS programs. EA recommended — CS fills fast. Strong academics and projects matter.", "deadline": "Nov 1 EA / Jan 5 RD"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. You don't need to do everything. The goal is to build a compelling \"spike\" in CS through some combination of competitive programming, research, and meaningful projects. Pick the path that excites you most and go deep.",
     },
@@ -778,9 +780,11 @@ EE_DATA = {
         ],
         "target_schools": [
             {"school": "MIT", "program": "EECS (6-2)", "strategy": "EA non-binding. MIT EECS is the gold standard. Show hardware builds and research depth.", "deadline": "Nov 1 EA"},
-            {"school": "Stanford", "program": "Electrical Engineering", "strategy": "REA. Stanford EE emphasizes innovation and interdisciplinary thinking. Show impact beyond academics.", "deadline": "Nov 1 REA"},
+            {"school": "Stanford", "program": "Electrical Engineering", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Stanford EE emphasizes innovation and interdisciplinary thinking. Show impact beyond academics.", "deadline": "Nov 1 REA"},
             {"school": "Caltech", "program": "Electrical Engineering", "strategy": "EA non-binding. Tiny program — very research-intensive. Physics and math strength are paramount.", "deadline": "Nov 1 EA"},
             {"school": "Georgia Tech", "program": "ECE", "strategy": "EA available. Top-5 ECE program with strong industry connections. Great value and excellent research.", "deadline": "Nov 1 EA"},
+            {"school": "UC Berkeley", "program": "EECS", "strategy": "Apply directly to EECS in the College of Engineering. Top-ranked public program with strong semiconductor and signal processing research.", "deadline": "Nov 30 UC"},
+            {"school": "Purdue", "program": "ECE", "strategy": "EA available. Excellent hands-on program with strong industry ties in semiconductors, circuits, and power systems. Great research opportunities.", "deadline": "Nov 1 EA"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. EE rewards students who combine theoretical depth (physics, math) with hands-on building skills. You don't need to do everything — pick the combination of projects, competitions, and research that excites you most and go deep.",
     },
@@ -1163,9 +1167,11 @@ ME_DATA = {
         ],
         "target_schools": [
             {"school": "MIT", "program": "Mechanical Engineering (Course 2)", "strategy": "EA non-binding. MIT wants makers. Show your build portfolio and research depth.", "deadline": "Nov 1 EA"},
-            {"school": "Stanford", "program": "Mechanical Engineering", "strategy": "REA. Stanford ME emphasizes design thinking and impact. Show how you've solved real problems.", "deadline": "Nov 1 REA"},
+            {"school": "Stanford", "program": "Mechanical Engineering", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Stanford ME emphasizes design thinking and impact. Show how you've solved real problems.", "deadline": "Nov 1 REA"},
             {"school": "Georgia Tech", "program": "Mechanical Engineering", "strategy": "EA available. #2 public MechE. Excellent co-op program and research opportunities.", "deadline": "Nov 1 EA"},
             {"school": "Purdue", "program": "Mechanical Engineering", "strategy": "EA available. Top-3 MechE nationally. Strong industry pipeline and hands-on curriculum.", "deadline": "Nov 1 EA"},
+            {"school": "Caltech", "program": "Mechanical Engineering", "strategy": "EA non-binding. Small but elite ME program. Strong emphasis on research and fundamental engineering science.", "deadline": "Nov 1 EA"},
+            {"school": "University of Michigan", "program": "Mechanical Engineering", "strategy": "EA available. Top-5 MechE program with excellent research facilities and industry partnerships.", "deadline": "Nov 1 EA"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. MechE rewards students who can both design on a computer and build with their hands. You don't need to do everything — but you should demonstrate a clear progression from tinkerer to engineer.",
     },
@@ -1548,9 +1554,11 @@ CE_DATA = {
         ],
         "target_schools": [
             {"school": "MIT", "program": "Civil & Environmental Engineering", "strategy": "EA non-binding. MIT CEE combines infrastructure with environmental science. Show research potential.", "deadline": "Nov 1 EA"},
-            {"school": "Stanford", "program": "Civil & Environmental Engineering", "strategy": "REA. Stanford CEE emphasizes sustainability and innovation. Essays about real-world impact matter.", "deadline": "Nov 1 REA"},
+            {"school": "Stanford", "program": "Civil & Environmental Engineering", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Stanford CEE emphasizes sustainability and innovation. Essays about real-world impact matter.", "deadline": "Nov 1 REA"},
             {"school": "UC Berkeley", "program": "Civil Engineering", "strategy": "Apply directly to CoE. Top-ranked public CE program. Strong in structural and environmental.", "deadline": "Nov 30 UC Deadline"},
             {"school": "Georgia Tech", "program": "Civil Engineering", "strategy": "EA available. Excellent facilities and industry connections. Strong in structural and transportation.", "deadline": "Nov 1 EA"},
+            {"school": "Purdue", "program": "Civil Engineering", "strategy": "EA available. Top-ranked CE program with strengths in structural, geotechnical, and construction engineering.", "deadline": "Nov 1 EA"},
+            {"school": "University of Michigan", "program": "Civil Engineering", "strategy": "EA available. Excellent CE program with strong research in infrastructure and water resources.", "deadline": "Nov 1 EA"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. Civil engineering rewards students who combine technical strength with a genuine passion for improving communities. You don't need to do everything — find the CE subfield that excites you and build depth there.",
     },
@@ -1933,9 +1941,11 @@ BIO_DATA = {
         ],
         "target_schools": [
             {"school": "MIT", "program": "Biology (Course 7)", "strategy": "EA non-binding. MIT Bio is quantitative and research-intensive. Show computational + wet lab skills.", "deadline": "Nov 1 EA"},
-            {"school": "Harvard", "program": "Molecular & Cellular Biology", "strategy": "REA. Harvard MCB is world-class. Demonstrate research depth and intellectual curiosity.", "deadline": "Nov 1 REA"},
-            {"school": "Stanford", "program": "Biology", "strategy": "REA. Stanford Bio emphasizes interdisciplinary approaches. Show breadth across biology subfields.", "deadline": "Nov 1 REA"},
+            {"school": "Harvard", "program": "Molecular & Cellular Biology", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Harvard MCB is world-class. Demonstrate research depth and intellectual curiosity.", "deadline": "Nov 1 REA"},
+            {"school": "Stanford", "program": "Biology", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Stanford Bio emphasizes interdisciplinary approaches. Show breadth across biology subfields.", "deadline": "Nov 1 REA"},
             {"school": "Johns Hopkins", "program": "Biology / BME", "strategy": "ED available. Strongest undergraduate research culture in biology. ED if JHU is your top choice.", "deadline": "Nov 1 ED"},
+            {"school": "Caltech", "program": "Biology", "strategy": "EA non-binding. Tiny but world-class biology program. Extremely research-intensive from day one.", "deadline": "Nov 1 EA"},
+            {"school": "UC Berkeley", "program": "MCB / Integrative Biology", "strategy": "Apply to College of L&S for MCB or IB. Top-ranked public university for biological sciences with unmatched research breadth.", "deadline": "Nov 30 UC"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. Biology rewards students who combine deep theoretical knowledge (USABO) with real research experience (lab work, publications). You don't need to do everything — but a strong USABO result plus meaningful research is the winning combination.",
     },
@@ -2319,8 +2329,10 @@ CHEM_DATA = {
         "target_schools": [
             {"school": "Caltech", "program": "Chemistry", "strategy": "EA non-binding. Caltech is the gold standard for chemistry. Olympiad results and research depth matter most.", "deadline": "Nov 1 EA"},
             {"school": "MIT", "program": "Chemistry (Course 5)", "strategy": "EA non-binding. MIT Chemistry is excellent and interdisciplinary. Show breadth across chemistry subfields.", "deadline": "Nov 1 EA"},
-            {"school": "Stanford", "program": "Chemistry", "strategy": "REA. Stanford Chemistry emphasizes innovation. Connect your research to real-world impact.", "deadline": "Nov 1 REA"},
-            {"school": "Harvard", "program": "Chemistry & Chemical Biology", "strategy": "REA. Harvard CCB is world-class in organic and chemical biology. Strong research narrative essential.", "deadline": "Nov 1 REA"},
+            {"school": "Stanford", "program": "Chemistry", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Stanford Chemistry emphasizes innovation. Connect your research to real-world impact.", "deadline": "Nov 1 REA"},
+            {"school": "Harvard", "program": "Chemistry & Chemical Biology", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Harvard CCB is world-class in organic and chemical biology. Strong research narrative essential.", "deadline": "Nov 1 REA"},
+            {"school": "UC Berkeley", "program": "Chemistry", "strategy": "Apply to College of Chemistry. Top-ranked public chemistry program with Nobel-level research faculty.", "deadline": "Nov 30 UC"},
+            {"school": "Princeton", "program": "Chemistry", "strategy": "Restrictive Early Action. Small but elite chemistry department with strong focus on physical and materials chemistry.", "deadline": "Nov 1 REA"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. Chemistry rewards depth: deep knowledge from USNCO preparation, deep lab skills from real research, and deep understanding from college-level coursework. Find the subfield of chemistry that excites you most and pursue it relentlessly.",
     },
@@ -2704,8 +2716,10 @@ PHYS_DATA = {
         "target_schools": [
             {"school": "MIT", "program": "Physics (Course 8)", "strategy": "EA non-binding. MIT Physics is legendary. Show both theoretical depth and experimental ability.", "deadline": "Nov 1 EA"},
             {"school": "Caltech", "program": "Physics", "strategy": "EA non-binding. Every Caltech student takes physics. Show deep physics passion and Olympiad results.", "deadline": "Nov 1 EA"},
-            {"school": "Princeton", "program": "Physics", "strategy": "REA non-binding. Princeton Physics has unmatched theory faculty. Strong math and physics competition results valued.", "deadline": "Nov 1 REA"},
-            {"school": "Stanford", "program": "Physics", "strategy": "REA. Stanford Physics emphasizes interdisciplinary research. Connect physics to broader impact.", "deadline": "Nov 1 REA"},
+            {"school": "Princeton", "program": "Physics", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Princeton Physics has unmatched theory faculty. Strong math and physics competition results valued.", "deadline": "Nov 1 REA"},
+            {"school": "Stanford", "program": "Physics", "strategy": "Restrictive Early Action (non-binding, but you can't apply early elsewhere to private schools). Stanford Physics emphasizes interdisciplinary research. Connect physics to broader impact.", "deadline": "Nov 1 REA"},
+            {"school": "Harvard", "program": "Physics", "strategy": "Restrictive Early Action. World-class physics faculty spanning astrophysics to condensed matter. Strong theory and experiment balance.", "deadline": "Nov 1 REA"},
+            {"school": "UC Berkeley", "program": "Physics", "strategy": "Apply to College of L&S. Legendary physics department — birthplace of the cyclotron. Strong across all subfields.", "deadline": "Nov 30 UC"},
         ],
         "footer_note": "This plan is ambitious — that's intentional. Physics rewards deep thinkers who combine mathematical sophistication with physical intuition. You don't need to do everything — but a strong USAPhO result, meaningful research, and advanced math preparation form the winning combination.",
     },

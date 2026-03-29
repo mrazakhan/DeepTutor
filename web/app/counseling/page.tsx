@@ -277,7 +277,7 @@ export default function CounselingPage() {
     return (
       <div>
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{data.label}</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{data.label}</h2>
           <p className={`text-lg font-medium ${(colorMap[color] || colorMap.slate).text} mt-1`}>{data.subtitle}</p>
         </div>
         {renderSection("Academics & AP Courses", data.academics, color, "BookOpen")}
@@ -294,7 +294,7 @@ export default function CounselingPage() {
     return (
       <div>
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">The Big Picture</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">The Big Picture</h2>
           <p className="text-slate-600 dark:text-slate-400 mt-2 text-base">
             A strategic roadmap for high school students targeting admission to top {selectedAreaMeta?.display_name} programs.
             Start in 9th grade for the best outcome.
@@ -384,7 +384,7 @@ export default function CounselingPage() {
             <Trophy className="w-5 h-5 text-amber-500" />
             Competition Milestones
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             {content.competition_milestones.map((track) => {
               const c = colorMap[track.color] || colorMap.slate;
               return (
@@ -410,7 +410,7 @@ export default function CounselingPage() {
             <GraduationCap className="w-5 h-5 text-rose-500" />
             Target Schools & Application Strategy
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {content.target_schools.map((school) => (
               <div
                 key={school.school}
@@ -453,15 +453,15 @@ export default function CounselingPage() {
 
     return (
       <div>
-        <div className="text-center mb-10">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+        <div className="text-center mb-8 sm:mb-10">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">
             Choose Your Area of Interest
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
+          <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
             Select a STEM field to see a tailored 4-year roadmap with AP courses, competitions, research opportunities, and target schools.
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {areas.map((area) => {
             const ac = AREA_COLORS[area.stem_area] || DEFAULT_AREA_COLOR;
             return (
@@ -490,7 +490,7 @@ export default function CounselingPage() {
   // --------------- main render ---------------
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
@@ -506,10 +506,10 @@ export default function CounselingPage() {
             <GraduationCap className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
               {selectedAreaMeta ? `${selectedAreaMeta.display_name} Admissions Counseling` : t("STEM Admissions Counseling")}
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               {selectedAreaMeta ? `Strategic roadmap for top ${selectedAreaMeta.display_name} programs` : t("Strategic roadmap for top STEM program admissions")}
             </p>
           </div>
@@ -526,12 +526,12 @@ export default function CounselingPage() {
       ) : content ? (
         <>
           {/* Tab Navigation */}
-          <div className="flex gap-1 mb-8 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-x-auto">
+          <div className="flex gap-1 mb-6 sm:mb-8 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 min-w-fit px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex-1 min-w-fit px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.id
                     ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
