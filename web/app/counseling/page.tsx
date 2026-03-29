@@ -507,10 +507,10 @@ export default function CounselingPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {selectedAreaMeta ? `${selectedAreaMeta.display_name} Admissions Counseling` : t("CS Admissions Counseling")}
+              {selectedAreaMeta ? `${selectedAreaMeta.display_name} Admissions Counseling` : t("STEM Admissions Counseling")}
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {selectedAreaMeta ? `Strategic roadmap for top ${selectedAreaMeta.display_name} programs` : t("Strategic roadmap for top CS program admissions")}
+              {selectedAreaMeta ? `Strategic roadmap for top ${selectedAreaMeta.display_name} programs` : t("Strategic roadmap for top STEM program admissions")}
             </p>
           </div>
         </div>
