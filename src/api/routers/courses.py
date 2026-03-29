@@ -332,6 +332,8 @@ _PROMPT_MCQ = (
     "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
     "in {course_name}.\n\n"
     "IMPORTANT: The AP CSA exam uses 4 answer choices (A-D), NOT 5.\n\n"
+    "CRITICAL: The correct answer MUST be placed at position {correct_position}. "
+    "Do NOT always put the correct answer at the same position.\n\n"
     "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
     '{{\n'
     '  "question": "The question text here (use \\n for newlines, include any code blocks as ```lang\\ncode\\n```)",\n'
@@ -341,7 +343,7 @@ _PROMPT_MCQ = (
     '    "C": "Third option",\n'
     '    "D": "Fourth option"\n'
     '  }},\n'
-    '  "correct": "B",\n'
+    '  "correct": "{correct_position}",\n'
     '  "explanation": "Detailed step-by-step explanation in markdown format",\n'
     '  "category": "The AP CSA concept category tested, e.g. Methods, ArrayList, 2D Array, Recursion, Inheritance, Polymorphism"\n'
     '}}\n\n'
@@ -537,10 +539,12 @@ async def preload_topic_content(
             "\n\nMake this an easy warm-up question testing basic recall of this topic.",
             "\n\nCreate a challenging question that would appear at the end of the AP exam.",
         ]
+        _answer_positions = ["A", "B", "C", "D"]
         for i in range(extend_mcq_start, _MCQ_COUNT):
             hint = variation_hints[i] if i < len(variation_hints) else variation_hints[-1]
+            correct_pos = _answer_positions[i % 4]  # Cycle through A, B, C, D
             logger.info(f"Generating MCQ {i+1}/{_MCQ_COUNT} for {topic.topic_number}...")
-            raw = await _generate(_PROMPT_MCQ.format(**fmt, variation_hint=hint))
+            raw = await _generate(_PROMPT_MCQ.format(**fmt, variation_hint=hint, correct_position=correct_pos))
             parsed = _parse_json_response(raw)
             if parsed and all(k in parsed for k in ("question", "options", "correct", "explanation")):
                 mcq_list.append(parsed)

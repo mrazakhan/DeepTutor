@@ -1875,6 +1875,21 @@ export default function StudyPage({
                 Take Assessment →
               </button>
             )}
+            {/* Back to study options */}
+            {sessionMcqs.length > 0 && mcqIndex >= sessionMcqs.length - 1 && (
+              <button
+                onClick={() => {
+                  setActiveMCQ(null);
+                  setSessionMcqs([]);
+                  setMcqIndex(0);
+                  setSelectedAnswer(null);
+                  setShowMCQExplanation(false);
+                }}
+                className="text-xs px-4 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                ← {t("Back to Study Options")}
+              </button>
+            )}
             {/* Generate more questions button */}
             {user && topicId && (
               <button
@@ -2019,6 +2034,19 @@ export default function StudyPage({
                     Take Assessment →
                   </button>
                 )}
+                {/* Back to study options */}
+                <button
+                  onClick={() => {
+                    setActiveFRQ(null);
+                    setShowFRQSolution(false);
+                    setFrqAnswer("");
+                    setFrqIndex(0);
+                    setFrqEvalResult(null);
+                  }}
+                  className="text-xs px-4 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center gap-1.5"
+                >
+                  ← Back to Study Options
+                </button>
               </div>
             </div>
           );
