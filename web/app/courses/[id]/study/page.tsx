@@ -1853,6 +1853,28 @@ export default function StudyPage({
                 Next MCQ →
               </button>
             )}
+            {/* Load More MCQs — shown when session is done and pool has unseen MCQs */}
+            {sessionMcqs.length > 0 && mcqIndex >= sessionMcqs.length - 1 && preloadedContent?.practice_mcq && (() => {
+              const allValid = (preloadedContent.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+              const seenQuestions = new Set(sessionMcqs.map((q: MCQuestion) => q.question));
+              const unseen = allValid.filter((q: MCQuestion) => !seenQuestions.has(q.question));
+              if (unseen.length === 0) return null;
+              return (
+                <button
+                  onClick={() => {
+                    const nextBatch = shuffleArray(unseen).slice(0, MCQ_SESSION_SIZE);
+                    setSessionMcqs(prev => [...prev, ...nextBatch]);
+                    setMcqIndex(sessionMcqs.length); // Jump to first new MCQ
+                    setActiveMCQ(nextBatch[0]);
+                    setSelectedAnswer(null);
+                    setShowMCQExplanation(false);
+                  }}
+                  className="text-xs px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors inline-flex items-center gap-1.5"
+                >
+                  Load More MCQs ({unseen.length} remaining)
+                </button>
+              );
+            })()}
             {/* Take Assessment button — shown when all MCQs in session are done */}
             {sessionMcqs.length > 0 && mcqIndex >= sessionMcqs.length - 1 && preloadedContent?.practice_mcq && (
               <button
