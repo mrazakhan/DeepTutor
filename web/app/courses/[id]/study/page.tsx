@@ -587,7 +587,6 @@ export default function StudyPage({
         mergedFrqs.push(...extraFrqs.map(tryRecoverFRQ));
       }
       if (mergedFrqs.length > 0 && !mergedFrqs[0].raw_text) {
-        setMessages((prev) => [...prev, { role: "user", content: label }]);
         setFrqIndex(0);
         setActiveFRQ(mergedFrqs[0]);
         setFrqAnswer("");
@@ -698,15 +697,7 @@ export default function StudyPage({
   function handleSubmitFRQ() {
     if (!activeFRQ) return;
     setShowFRQSolution(true);
-    const header = `**Your Answer:**\n\`\`\`java\n${frqAnswer || "(no answer submitted)"}\n\`\`\`\n\n---\n\n`;
-    const solution = `**Sample Solution:**\n\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n`;
-    const rubric = activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : "";
-    const explanation = `**Explanation:**\n${activeFRQ.explanation}`;
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", content: header + solution + rubric + explanation },
-    ]);
-    setActiveFRQ(null);
+    // Don't append to chat — solution shown inline in the FRQ card
   }
 
   async function handleEvaluateFRQ() {
@@ -848,10 +839,7 @@ export default function StudyPage({
       setFrqAnswer("");
       setShowFRQSolution(false);
       setShowGoldenSolution(false);
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: `Practice FRQ ${nextIdx + 1} of ${frqs.length}`, type: "system" as const },
-      ]);
+      setFrqEvalResult(null);
     }
   }
 
@@ -2056,66 +2044,86 @@ export default function StudyPage({
           </div>
         )}
 
-        {/* FRQ question shown in chat (without editor — editor is on the right panel) */}
-        {activeFRQ && !showFRQSolution && (() => {
-          const totalFrqs = (preloadedContent?.practice_frq?.length || 0) + (extraFrqs?.length || 0);
+        {/* FRQ question — single-card view with navigation */}
+        {activeFRQ && (() => {
+          const allFrqs = [...(preloadedContent?.practice_frq || []), ...(extraFrqs || [])];
+          const totalFrqs = allFrqs.length;
+          const hasNext = frqIndex < totalFrqs - 1;
           return (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Bot className="w-4 h-4 text-blue-500" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-amber-500/20">
+              <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className="max-w-[80%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+            <div className="max-w-[85%] rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm">
+              {/* Header with progress dots */}
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-medium text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
-                  FRQ {frqIndex + 1} of {totalFrqs || 1}
-                  {activeFRQ.frq_type && ` • ${activeFRQ.frq_type}`}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 rounded-full shadow-sm">
+                    FRQ {frqIndex + 1} / {totalFrqs || 1}
+                  </span>
+                  {activeFRQ.frq_type && (
+                    <span className="text-[10px] font-medium text-purple-500 bg-purple-50 dark:bg-purple-900/30 px-2 py-0.5 rounded-full">
+                      {activeFRQ.frq_type}
+                    </span>
+                  )}
+                </div>
+                {/* Navigation dots */}
+                {totalFrqs > 1 && (
+                  <div className="flex items-center gap-1">
+                    {allFrqs.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (allFrqs[i] && !allFrqs[i].raw_text) {
+                            setFrqIndex(i);
+                            setActiveFRQ(allFrqs[i]);
+                            setFrqAnswer("");
+                            setShowFRQSolution(false);
+                            setShowGoldenSolution(false);
+                            setFrqEvalResult(null);
+                          }
+                        }}
+                        className={`w-2.5 h-2.5 rounded-full transition-all ${
+                          i === frqIndex ? "w-6 bg-amber-500 rounded-full" : "bg-slate-300 dark:bg-slate-600"
+                        }`}
+                        title={`FRQ ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Progress bar */}
+              {totalFrqs > 1 && (
+                <div className="h-1 bg-slate-100 dark:bg-slate-700 rounded-full mb-4 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
+                    style={{ width: `${((frqIndex + 1) / totalFrqs) * 100}%` }}
+                  />
+                </div>
+              )}
+
+              {/* Question */}
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {processLatexContent(activeFRQ.question)}
                 </ReactMarkdown>
               </div>
+
+              {/* Solution (shown after View Solution) */}
+              {showFRQSolution && (
+                <div className="mt-4 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {`**Sample Solution:**\n\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n${activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : ""}**Explanation:**\n${activeFRQ.explanation}`}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              )}
+
               {/* Golden solution toggle */}
               {goldenSolutions?.find(g => g.frq_index === frqIndex) && (
                 <div className="mt-3 border-t border-slate-200 dark:border-slate-700 pt-3">
-                  <button
-                    onClick={() => setShowGoldenSolution(!showGoldenSolution)}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors flex items-center gap-1.5"
-                  >
-                    {showGoldenSolution ? "▾ Hide Solution" : "▸ Show Solution"}
-                  </button>
-                  {showGoldenSolution && (() => {
-                    const gs = goldenSolutions.find(g => g.frq_index === frqIndex)!;
-                    return (
-                      <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {"```java\n" + gs.solution_code + "\n```\n\n**Explanation:**\n" + gs.explanation}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-              <p className="text-xs text-slate-400 mt-3 italic">
-                ← Write your solution in the editor panel on the right
-              </p>
-            </div>
-          </div>
-          );
-        })()}
-
-        {/* "Next FRQ" button after solution + golden solution toggle */}
-        {showFRQSolution && (() => {
-          const totalFrqs = (preloadedContent?.practice_frq?.length || 0) + (extraFrqs?.length || 0);
-          const hasNext = frqIndex < totalFrqs - 1;
-          return (
-            <div className="flex flex-col items-center gap-2">
-              {/* Golden solution toggle in post-submit view */}
-              {goldenSolutions?.find(g => g.frq_index === frqIndex) && (
-                <div className="w-full max-w-2xl">
                   <button
                     onClick={() => setShowGoldenSolution(!showGoldenSolution)}
                     className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors flex items-center gap-1.5"
@@ -2136,51 +2144,77 @@ export default function StudyPage({
                   })()}
                 </div>
               )}
-              <div className="flex gap-2 flex-wrap">
-                {hasNext && (
-                  <button
-                    onClick={handleNextFRQ}
-                    className="text-xs px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
-                  >
-                    Next FRQ →
-                  </button>
-                )}
-                {!hasNext && preloadedContent?.practice_mcq && (
+
+              {/* Navigation / action buttons */}
+              {showFRQSolution ? (
+                <div className="flex items-center gap-2 flex-wrap mt-4">
+                  {frqIndex > 0 && (
+                    <button
+                      onClick={() => {
+                        setFrqIndex(frqIndex - 1);
+                        setActiveFRQ(allFrqs[frqIndex - 1]);
+                        setFrqAnswer("");
+                        setShowFRQSolution(false);
+                        setShowGoldenSolution(false);
+                        setFrqEvalResult(null);
+                      }}
+                      className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      ← Previous
+                    </button>
+                  )}
+                  {hasNext ? (
+                    <button
+                      onClick={handleNextFRQ}
+                      className="px-6 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-semibold hover:from-amber-600 hover:to-orange-700 transition-all shadow-md shadow-amber-500/20"
+                    >
+                      Next FRQ →
+                    </button>
+                  ) : (
+                    <>
+                      {preloadedContent?.practice_mcq && (
+                        <button
+                          onClick={() => {
+                            setActiveFRQ(null);
+                            setShowFRQSolution(false);
+                            const allMcqs = (preloadedContent.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+                            if (allMcqs.length > 0) {
+                              setAssessmentQuestions(shuffleArray([...allMcqs]));
+                              setAssessmentIndex(0);
+                              setAssessmentScore({ correct: 0, total: 0 });
+                              setAssessmentMode(true);
+                              setSelectedAnswer(null);
+                              setShowMCQExplanation(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 text-sm hover:bg-green-100 transition-colors inline-flex items-center gap-1.5"
+                        >
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          Assessment
+                        </button>
+                      )}
+                    </>
+                  )}
                   <button
                     onClick={() => {
                       setActiveFRQ(null);
                       setShowFRQSolution(false);
-                      const allMcqs = (preloadedContent?.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
-                      if (allMcqs.length > 0) {
-                        setAssessmentQuestions(shuffleArray([...allMcqs]));
-                        setAssessmentIndex(0);
-                        setAssessmentScore({ correct: 0, total: 0 });
-                        setAssessmentMode(true);
-                        setSelectedAnswer(null);
-                        setShowMCQExplanation(false);
-                      }
+                      setFrqAnswer("");
+                      setFrqIndex(0);
+                      setFrqEvalResult(null);
                     }}
-                    className="text-xs px-4 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                   >
-                    <GraduationCap className="w-3.5 h-3.5" />
-                    Take Assessment →
+                    ← Study Options
                   </button>
-                )}
-                {/* Back to study options */}
-                <button
-                  onClick={() => {
-                    setActiveFRQ(null);
-                    setShowFRQSolution(false);
-                    setFrqAnswer("");
-                    setFrqIndex(0);
-                    setFrqEvalResult(null);
-                  }}
-                  className="text-xs px-4 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center gap-1.5"
-                >
-                  ← Back to Study Options
-                </button>
-              </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 mt-3 italic">
+                  ← Write your solution in the editor panel on the right
+                </p>
+              )}
             </div>
+          </div>
           );
         })()}
 
