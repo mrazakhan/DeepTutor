@@ -27,9 +27,11 @@ import {
   X,
   Trash2,
   UserCircle,
+  MessageCircle,
+  Send,
   type LucideIcon,
 } from "lucide-react";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, wsUrl } from "@/lib/api";
 
 // --------------- icon mapping ---------------
 
@@ -61,7 +63,13 @@ function IconFromName({ name, className }: { name: string; className?: string })
 
 // --------------- types ---------------
 
-type GradeTab = "big-picture" | "9th" | "10th" | "11th" | "12th";
+type GradeTab = "big-picture" | "9th" | "10th" | "11th" | "12th" | "chat";
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  isStreaming?: boolean;
+}
 
 interface StemArea {
   stem_area: string;
@@ -195,6 +203,14 @@ export default function CounselingPage() {
   const [showResumeSection, setShowResumeSection] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatInitialized, setChatInitialized] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem("deeptutor_token");
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -296,6 +312,116 @@ export default function CounselingPage() {
     }
   };
 
+  // Scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  // Initialize chat when tab switches to chat
+  const initChat = useCallback(() => {
+    if (chatInitialized || !selectedArea) return;
+    setChatInitialized(true);
+    // Send an initial "start" message to get the counselor's intro
+    sendChatMessage("Hi, I'd like to get counseling advice for getting into a top program.", true);
+  }, [chatInitialized, selectedArea]);
+
+  const sendChatMessage = useCallback(
+    (message: string, isInit = false) => {
+      if (!selectedArea || !message.trim()) return;
+      setChatSending(true);
+
+      // Add user message (skip for init)
+      if (!isInit) {
+        setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+      }
+
+      const ws = new WebSocket(wsUrl("/api/v1/counseling/chat"));
+      wsRef.current = ws;
+
+      let assistantContent = "";
+
+      ws.onopen = () => {
+        const token = localStorage.getItem("deeptutor_token");
+        // Parse user_id from token if available
+        let userId: string | null = null;
+        try {
+          const stored = localStorage.getItem("deeptutor_user");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            userId = parsed.id || parsed.user_id || null;
+          }
+        } catch {}
+
+        // Build history from existing messages (exclude current)
+        const history = chatMessages
+          .filter((m) => !m.isStreaming)
+          .map((m) => ({ role: m.role, content: m.content }));
+
+        ws.send(
+          JSON.stringify({
+            message,
+            stem_area: selectedArea,
+            history: isInit ? [] : history,
+            user_id: userId,
+          })
+        );
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "stream") {
+          assistantContent += data.content;
+          setChatMessages((prev) => {
+            const msgs = [...prev];
+            const last = msgs[msgs.length - 1];
+            if (last?.role === "assistant" && last?.isStreaming) {
+              msgs[msgs.length - 1] = { ...last, content: assistantContent };
+            } else {
+              msgs.push({ role: "assistant", content: assistantContent, isStreaming: true });
+            }
+            return msgs;
+          });
+        } else if (data.type === "result") {
+          setChatMessages((prev) => {
+            const msgs = [...prev];
+            const last = msgs[msgs.length - 1];
+            if (last?.role === "assistant") {
+              msgs[msgs.length - 1] = { ...last, content: data.content, isStreaming: false };
+            }
+            return msgs;
+          });
+          setChatSending(false);
+          ws.close();
+        } else if (data.type === "error") {
+          setChatMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `⚠️ Error: ${data.message}` },
+          ]);
+          setChatSending(false);
+          ws.close();
+        }
+      };
+
+      ws.onerror = () => {
+        setChatSending(false);
+      };
+
+      ws.onclose = () => {
+        setChatSending(false);
+      };
+    },
+    [selectedArea, chatMessages]
+  );
+
+  const handleChatSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || chatSending) return;
+    const msg = chatInput.trim();
+    setChatInput("");
+    sendChatMessage(msg);
+  };
+
   // Fetch available areas on mount
   useEffect(() => {
     async function fetchAreas() {
@@ -322,6 +448,9 @@ export default function CounselingPage() {
     setActiveTab("big-picture");
     setAnalysisText("");
     setShowResumeSection(false);
+    setChatMessages([]);
+    setChatInitialized(false);
+    setChatInput("");
     try {
       const [contentRes] = await Promise.all([
         fetch(apiUrl(`/api/v1/counseling/content/${area.stem_area}`)),
@@ -346,12 +475,13 @@ export default function CounselingPage() {
 
   // --------------- render helpers ---------------
 
-  const tabs: { id: GradeTab; label: string }[] = [
+  const tabs: { id: GradeTab; label: string; icon?: string }[] = [
     { id: "big-picture", label: "The Big Picture" },
     { id: "9th", label: "9th Grade" },
     { id: "10th", label: "10th Grade" },
     { id: "11th", label: "11th Grade" },
     { id: "12th", label: "12th Grade" },
+    { id: "chat", label: "💬 Chat with Counselor" },
   ];
 
   function renderSection(title: string, items: TimelineItem[], color: string, sectionIconName: string) {
@@ -554,6 +684,146 @@ export default function CounselingPage() {
     );
   }
 
+  // --------------- chat renderer ---------------
+
+  function renderChat() {
+    return (
+      <div className="flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
+        {/* Resume upload banner */}
+        {!resumeStatus.has_resume && (
+          <div className="mb-4 p-3 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                <Upload className="w-4 h-4" />
+                <span>Upload your resume for more personalized advice</span>
+              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >
+                Upload
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.doc,.txt"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleResumeUpload(file);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {resumeStatus.has_resume && (
+          <div className="mb-4 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10">
+            <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Resume loaded: {resumeStatus.filename}</span>
+              <button
+                onClick={handleDeleteResume}
+                className="ml-auto p-1 text-red-400 hover:text-red-500"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat messages */}
+        <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+          {chatMessages.length === 0 && !chatSending && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center mb-4">
+                <MessageCircle className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">
+                Chat with Your Counselor
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
+                Get personalized advice for {selectedAreaMeta?.display_name} admissions.
+                The counselor will ask about your courses, activities, and goals.
+              </p>
+            </div>
+          )}
+
+          {chatMessages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${
+                  msg.role === "user"
+                    ? "bg-blue-500 text-white rounded-br-md"
+                    : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-md"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    {msg.content.split("\n").map((line, i) => {
+                      if (line.startsWith("## ")) {
+                        return <h3 key={i} className="text-base font-bold mt-3 mb-1">{line.replace("## ", "")}</h3>;
+                      } else if (line.startsWith("### ")) {
+                        return <h4 key={i} className="text-sm font-semibold mt-2 mb-1">{line.replace("### ", "")}</h4>;
+                      } else if (line.startsWith("- ") || line.startsWith("* ")) {
+                        return <li key={i} className="ml-4 list-disc text-sm">{line.slice(2)}</li>;
+                      } else if (line.match(/^\d+\. /)) {
+                        return <li key={i} className="ml-4 list-decimal text-sm">{line.replace(/^\d+\. /, "")}</li>;
+                      } else if (line.trim() === "") {
+                        return <div key={i} className="h-1.5" />;
+                      }
+                      return <p key={i} className="text-sm leading-relaxed">{line}</p>;
+                    })}
+                    {msg.isStreaming && (
+                      <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {chatSending && chatMessages.length === 0 && (
+            <div className="flex justify-start">
+              <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Counselor is thinking...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Chat input */}
+        <form onSubmit={handleChatSubmit} className="flex gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="Ask about courses, competitions, research, schools..."
+            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400"
+            disabled={chatSending}
+          />
+          <button
+            type="submit"
+            disabled={chatSending || !chatInput.trim()}
+            className="px-4 py-2.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   // --------------- area selector ---------------
 
   function renderAreaSelector() {
@@ -652,10 +922,18 @@ export default function CounselingPage() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === "chat" && !chatInitialized) {
+                    // Delay to allow state update, then init chat
+                    setTimeout(() => initChat(), 100);
+                  }
+                }}
                 className={`flex-1 min-w-fit px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.id
-                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                    ? tab.id === "chat"
+                      ? "bg-gradient-to-r from-blue-500 to-violet-500 text-white shadow-sm"
+                      : "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
                 }`}
               >
@@ -664,160 +942,11 @@ export default function CounselingPage() {
             ))}
           </div>
 
-          {/* Resume Upload Section */}
-          <div className="mb-6">
-            {!showResumeSection ? (
-              <button
-                onClick={() => setShowResumeSection(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-sm text-blue-600 dark:text-blue-400 font-medium w-full justify-center"
-              >
-                <UserCircle className="w-4 h-4" />
-                {resumeStatus.has_resume
-                  ? `Resume uploaded: ${resumeStatus.filename} — Get personalized analysis`
-                  : "Upload your resume for personalized counseling"}
-              </button>
-            ) : (
-              <div className="p-4 sm:p-5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <UserCircle className="w-5 h-5 text-blue-500" />
-                    Personalized Counseling
-                  </h3>
-                  <button
-                    onClick={() => setShowResumeSection(false)}
-                    className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {!resumeStatus.has_resume ? (
-                  /* Upload zone */
-                  <div
-                    className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 sm:p-8 text-center cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
-                    onClick={() => fileInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const file = e.dataTransfer.files[0];
-                      if (file) handleResumeUpload(file);
-                    }}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,.docx,.doc,.txt"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleResumeUpload(file);
-                      }}
-                    />
-                    {resumeUploading ? (
-                      <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
-                    ) : (
-                      <>
-                        <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          Drop your resume here or <span className="text-blue-500 font-medium">browse</span>
-                        </p>
-                        <p className="text-xs text-slate-400 mt-1">PDF, DOCX, or TXT (max 10 MB)</p>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  /* Resume uploaded — show file info + analyze button */
-                  <div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <span className="text-sm text-slate-700 dark:text-slate-300 truncate">
-                          {resumeStatus.filename}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-xs text-blue-500 hover:text-blue-600 px-2 py-1"
-                        >
-                          Replace
-                        </button>
-                        <button
-                          onClick={handleDeleteResume}
-                          className="p-1 text-red-400 hover:text-red-500"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".pdf,.docx,.doc,.txt"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleResumeUpload(file);
-                        }}
-                      />
-                    </div>
-
-                    {!analysisText && !analysisLoading && (
-                      <button
-                        onClick={handleAnalyze}
-                        className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-white font-medium text-sm hover:from-blue-600 hover:to-violet-600 transition-all shadow-sm"
-                      >
-                        ✨ Get Personalized Analysis
-                      </button>
-                    )}
-
-                    {analysisLoading && !analysisText && (
-                      <div className="flex items-center justify-center py-6">
-                        <Loader2 className="w-6 h-6 animate-spin text-blue-500 mr-2" />
-                        <span className="text-sm text-slate-500">Analyzing your profile...</span>
-                      </div>
-                    )}
-
-                    {analysisText && (
-                      <div className="mt-3 p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-h-[60vh] overflow-y-auto">
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          {analysisText.split("\n").map((line, i) => {
-                            if (line.startsWith("## ")) {
-                              return <h2 key={i} className="text-lg font-bold mt-4 mb-2 text-slate-900 dark:text-slate-100">{line.replace("## ", "")}</h2>;
-                            } else if (line.startsWith("### ")) {
-                              return <h3 key={i} className="text-base font-semibold mt-3 mb-1 text-slate-800 dark:text-slate-200">{line.replace("### ", "")}</h3>;
-                            } else if (line.startsWith("- ") || line.startsWith("* ")) {
-                              return <li key={i} className="text-slate-600 dark:text-slate-400 ml-4 list-disc">{line.slice(2)}</li>;
-                            } else if (line.match(/^\d+\. /)) {
-                              return <li key={i} className="text-slate-600 dark:text-slate-400 ml-4 list-decimal">{line.replace(/^\d+\. /, "")}</li>;
-                            } else if (line.startsWith("**") && line.endsWith("**")) {
-                              return <p key={i} className="font-semibold text-slate-800 dark:text-slate-200 mt-2">{line.replace(/\*\*/g, "")}</p>;
-                            } else if (line.trim() === "") {
-                              return <div key={i} className="h-2" />;
-                            }
-                            return <p key={i} className="text-slate-600 dark:text-slate-400 leading-relaxed">{line}</p>;
-                          })}
-                        </div>
-                        {!analysisLoading && (
-                          <button
-                            onClick={handleAnalyze}
-                            className="mt-4 text-sm text-blue-500 hover:text-blue-600 font-medium"
-                          >
-                            🔄 Regenerate Analysis
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Tab Content */}
           <div className="min-h-[60vh]">
             {activeTab === "big-picture" && renderBigPicture()}
-            {activeTab !== "big-picture" && renderGradeContent(activeTab)}
+            {activeTab === "chat" && renderChat()}
+            {activeTab !== "big-picture" && activeTab !== "chat" && renderGradeContent(activeTab)}
           </div>
 
           {/* Footer Note */}

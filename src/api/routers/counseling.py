@@ -5,7 +5,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -394,3 +394,179 @@ Be specific — reference my actual activities, courses, and achievements from m
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ---------- counseling chat (WebSocket) ----------
+
+def _build_roadmap_text(stem_area: str) -> tuple[str, str]:
+    """Load roadmap content and return (display_name, roadmap_text)."""
+    db = get_db()
+    try:
+        roadmap = db.query(CounselingContent).filter(
+            CounselingContent.stem_area == stem_area
+        ).first()
+        if not roadmap:
+            return stem_area.replace("_", " ").title(), ""
+        display_name = roadmap.display_name
+        try:
+            content = json.loads(roadmap.content)
+            parts = []
+            for grade, data in content.get("grade_data", {}).items():
+                parts.append(f"\n=== {data.get('label', grade)} ({data.get('subtitle', '')}) ===")
+                for section in ("academics", "competitions", "projects", "summer"):
+                    items = data.get(section, [])
+                    if items:
+                        parts.append(f"  {section.title()}:")
+                        for item in items:
+                            parts.append(f"    - {item['title']}: {item['description']}")
+            for insight in content.get("key_insights", []):
+                parts.append(f"\nKey Insight - {insight['title']}: {insight['description']}")
+            for school in content.get("target_schools", []):
+                parts.append(f"\nTarget School - {school['school']} ({school['program']}): {school['strategy']}")
+            return display_name, "\n".join(parts)
+        except Exception:
+            return display_name, ""
+    finally:
+        db.close()
+
+
+def _build_counseling_system_prompt(display_name: str, roadmap_text: str, resume_text: str) -> str:
+    """Build the system prompt for counseling chat."""
+    resume_section = ""
+    if resume_text:
+        resume_section = f"""
+
+=== STUDENT'S RESUME/PROFILE ===
+{resume_text}
+"""
+
+    return f"""You are an expert college admissions counselor specializing in {display_name} programs at top universities. You are having an interactive conversation with a high school student who wants to get into a top {display_name} program.
+
+You have access to a detailed 4-year roadmap for students targeting top {display_name} programs.
+{resume_section}
+
+=== ROADMAP FOR {display_name.upper()} ===
+{roadmap_text}
+
+=== YOUR APPROACH ===
+1. Be conversational, warm, and encouraging — but honest about gaps.
+2. Ask clarifying questions to understand the student's situation better. Key things to ask about:
+   - What grade are they in currently?
+   - What AP courses have they taken or are planning to take?
+   - What competitions have they participated in?
+   - What extracurricular activities are they involved in?
+   - What are their test scores (SAT/ACT, AP scores)?
+   - What research or projects have they done?
+   - What are their target schools?
+3. Based on their answers, give specific, actionable advice referencing the roadmap.
+4. Proactively suggest what they should be doing NOW based on their grade level.
+5. Help them understand how they compare to competitive applicants.
+6. If they have a resume uploaded, reference specific items from it.
+7. Don't dump everything at once — have a natural conversation, asking 2-3 questions at a time.
+8. Focus on improving their chances of admission — be practical, not just aspirational.
+
+Start by introducing yourself briefly and asking what grade they're in and what their main interests/activities are so far. Keep your initial message SHORT (3-4 sentences max)."""
+
+
+@router.websocket("/chat")
+async def websocket_counseling_chat(websocket: WebSocket):
+    """
+    WebSocket endpoint for interactive counseling chat.
+
+    Request format:
+    {
+        "message": str,
+        "stem_area": str,
+        "history": [...] | null
+    }
+
+    Response types:
+    - {"type": "stream", "content": str}
+    - {"type": "result", "content": str}
+    - {"type": "error", "message": str}
+    """
+    await websocket.accept()
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            message = data.get("message", "").strip()
+            stem_area = data.get("stem_area", "cs")
+            history = data.get("history") or []
+            user_id = data.get("user_id")
+
+            if not message:
+                await websocket.send_json({"type": "error", "message": "Message is required"})
+                continue
+
+            try:
+                # Load roadmap context
+                display_name, roadmap_text = _build_roadmap_text(stem_area)
+
+                # Load resume if available
+                resume_text = ""
+                if user_id:
+                    db = get_db()
+                    try:
+                        resume = db.query(CounselingResume).filter(
+                            CounselingResume.user_id == user_id
+                        ).first()
+                        if resume and resume.extracted_text:
+                            resume_text = resume.extracted_text
+                    finally:
+                        db.close()
+
+                # Build system prompt
+                system_prompt = _build_counseling_system_prompt(
+                    display_name, roadmap_text, resume_text
+                )
+
+                # Build messages array
+                messages = [{"role": "system", "content": system_prompt}]
+                for msg in history:
+                    messages.append({
+                        "role": msg.get("role", "user"),
+                        "content": msg.get("content", ""),
+                    })
+                messages.append({"role": "user", "content": message})
+
+                # Stream LLM response
+                from src.services.llm.factory import stream as llm_stream
+                from src.services.llm.config import get_llm_config
+
+                llm_config = get_llm_config()
+                full_response = ""
+
+                async for chunk in llm_stream(
+                    prompt=message,
+                    system_prompt=system_prompt,
+                    model=llm_config.model,
+                    api_key=llm_config.api_key,
+                    base_url=llm_config.base_url,
+                    binding=getattr(llm_config, "binding", None),
+                    temperature=0.7,
+                    max_tokens=2048,
+                    messages=messages,
+                ):
+                    full_response += chunk
+                    await websocket.send_json({
+                        "type": "stream",
+                        "content": chunk,
+                    })
+
+                # Send final result
+                await websocket.send_json({
+                    "type": "result",
+                    "content": full_response,
+                })
+
+            except Exception as e:
+                await websocket.send_json({"type": "error", "message": str(e)})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        try:
+            await websocket.send_json({"type": "error", "message": "Connection error"})
+        except Exception:
+            pass
