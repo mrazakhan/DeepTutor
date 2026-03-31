@@ -28,6 +28,17 @@ def topic_has_content(base_url: str, course_id: str, topic_id: str) -> bool:
     if resp.status_code == 404:
         return False
     resp.raise_for_status()
+    data = resp.json()
+    # Endpoint returns {"content": None} when no TopicContent row exists
+    if data.get("content") is None:
+        return False
+    # Check if content has actual MCQs or FRQs (not just an empty/stub entry)
+    content = data["content"]
+    if isinstance(content, dict):
+        has_mcqs = len(content.get("practice_mcq", [])) > 0
+        has_frqs = len(content.get("practice_frq", [])) > 0
+        has_intro = len(content.get("intro", "")) > 100
+        return has_mcqs or has_frqs or has_intro
     return True
 
 
