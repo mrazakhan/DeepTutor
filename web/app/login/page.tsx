@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { GraduationCap, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -39,7 +40,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mx-auto mb-4">
-            <GraduationCap className="w-8 h-8 text-blue-500" />
+            <Image src="/logo.svg" alt="DeepTutor Logo" width={40} height={40} className="object-contain" priority />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             DeepTutor++
