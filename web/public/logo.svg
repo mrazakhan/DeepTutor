@@ -6,74 +6,76 @@
     </linearGradient>
   </defs>
 
-  <!-- === WIDE OPEN BOOK === -->
-  <!-- Left page (angled open) -->
-  <path d="M32 42 L32 35 Q32 33 30 32.5 L6 28 Q3 27.5 2 29 L2 38 Q2 39.5 4 40 L30 44 Q32 44.5 32 42 Z"
-        fill="white" stroke="#6366F1" stroke-width="1.2" stroke-linejoin="round"/>
-  <!-- Right page (angled open) -->
-  <path d="M32 42 L32 35 Q32 33 34 32.5 L58 28 Q61 27.5 62 29 L62 38 Q62 39.5 60 40 L34 44 Q32 44.5 32 42 Z"
-        fill="white" stroke="#6366F1" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- === OPEN BOOK === -->
+  <!-- Left page — curved upward like a real open book -->
+  <path d="M32 38 C32 36 31 34 28 33 Q18 30 6 32 Q4 32.5 4 34 L4 42 Q4 43.5 6 43 Q18 41 28 43.5 C31 44.2 32 43 32 41 Z"
+        fill="#6366F1" opacity="0.12"/>
+  <path d="M32 38 C32 36 31 34 28 33 Q18 30 6 32 Q4 32.5 4 34 L4 42 Q4 43.5 6 43 Q18 41 28 43.5 C31 44.2 32 43 32 41 Z"
+        fill="none" stroke="#6366F1" stroke-width="1.5" stroke-linejoin="round"/>
 
-  <!-- Page thickness — stacked pages underneath -->
-  <path d="M3 39 L31 43.5" stroke="#A5B4FC" stroke-width="0.5" opacity="0.5"/>
-  <path d="M3 40 L31 44.5" stroke="#A5B4FC" stroke-width="0.4" opacity="0.35"/>
-  <path d="M61 39 L33 43.5" stroke="#A5B4FC" stroke-width="0.5" opacity="0.5"/>
-  <path d="M61 40 L33 44.5" stroke="#A5B4FC" stroke-width="0.4" opacity="0.35"/>
+  <!-- Right page — curved upward -->
+  <path d="M32 38 C32 36 33 34 36 33 Q46 30 58 32 Q60 32.5 60 34 L60 42 Q60 43.5 58 43 Q46 41 36 43.5 C33 44.2 32 43 32 41 Z"
+        fill="#6366F1" opacity="0.12"/>
+  <path d="M32 38 C32 36 33 34 36 33 Q46 30 58 32 Q60 32.5 60 34 L60 42 Q60 43.5 58 43 Q46 41 36 43.5 C33 44.2 32 43 32 41 Z"
+        fill="none" stroke="#6366F1" stroke-width="1.5" stroke-linejoin="round"/>
 
-  <!-- Bottom page edges (book thickness) -->
-  <path d="M2 38 Q2 40.5 4 41 L30 45.5 Q32 46 32 44" stroke="#6366F1" stroke-width="0.8" fill="none" opacity="0.3"/>
-  <path d="M62 38 Q62 40.5 60 41 L34 45.5 Q32 46 32 44" stroke="#6366F1" stroke-width="0.8" fill="none" opacity="0.3"/>
+  <!-- Stacked pages underneath (book thickness) -->
+  <path d="M5 43 Q18 41.5 28 44 C31 44.7 32 44 32 42" stroke="#6366F1" stroke-width="0.8" fill="none" opacity="0.35"/>
+  <path d="M5.5 44.5 Q18 43 28 45 C31 45.5 32 45 32 43.5" stroke="#6366F1" stroke-width="0.6" fill="none" opacity="0.2"/>
+  <path d="M59 43 Q46 41.5 36 44 C33 44.7 32 44 32 42" stroke="#6366F1" stroke-width="0.8" fill="none" opacity="0.35"/>
+  <path d="M58.5 44.5 Q46 43 36 45 C33 45.5 32 45 32 43.5" stroke="#6366F1" stroke-width="0.6" fill="none" opacity="0.2"/>
 
-  <!-- Text lines on left page -->
-  <line x1="8" y1="32" x2="26" y2="35" stroke="#A5B4FC" stroke-width="0.7" opacity="0.4" stroke-linecap="round"/>
-  <line x1="9" y1="34" x2="27" y2="37" stroke="#A5B4FC" stroke-width="0.7" opacity="0.35" stroke-linecap="round"/>
-  <line x1="10" y1="36" x2="28" y2="39" stroke="#A5B4FC" stroke-width="0.6" opacity="0.3" stroke-linecap="round"/>
+  <!-- Spine -->
+  <path d="M32 33 C32 35 32 39 32 41" stroke="#6366F1" stroke-width="1" opacity="0.4"/>
 
-  <!-- Text lines on right page -->
-  <line x1="56" y1="32" x2="38" y2="35" stroke="#A5B4FC" stroke-width="0.7" opacity="0.4" stroke-linecap="round"/>
-  <line x1="55" y1="34" x2="37" y2="37" stroke="#A5B4FC" stroke-width="0.7" opacity="0.35" stroke-linecap="round"/>
-  <line x1="54" y1="36" x2="36" y2="39" stroke="#A5B4FC" stroke-width="0.6" opacity="0.3" stroke-linecap="round"/>
+  <!-- Text lines left page -->
+  <path d="M10 35 Q18 33.5 27 35" stroke="#6366F1" stroke-width="0.6" opacity="0.2" stroke-linecap="round"/>
+  <path d="M10 37.5 Q18 36 27 37.5" stroke="#6366F1" stroke-width="0.6" opacity="0.2" stroke-linecap="round"/>
+  <path d="M11 40 Q18 38.5 27 40" stroke="#6366F1" stroke-width="0.5" opacity="0.15" stroke-linecap="round"/>
 
-  <!-- Spine curve -->
-  <path d="M32 35 L32 44" stroke="#6366F1" stroke-width="0.6" opacity="0.3"/>
+  <!-- Text lines right page -->
+  <path d="M54 35 Q46 33.5 37 35" stroke="#6366F1" stroke-width="0.6" opacity="0.2" stroke-linecap="round"/>
+  <path d="M54 37.5 Q46 36 37 37.5" stroke="#6366F1" stroke-width="0.6" opacity="0.2" stroke-linecap="round"/>
+  <path d="M53 40 Q46 38.5 37 40" stroke="#6366F1" stroke-width="0.5" opacity="0.15" stroke-linecap="round"/>
 
-  <!-- === NEURAL NETWORK |> rising from book === -->
+  <!-- === NEURAL NETWORK |> (outline-only neurons) === -->
 
   <!-- Connections: left column to middle -->
   <line x1="18" y1="6" x2="30" y2="8" stroke="#818CF8" stroke-width="0.9" opacity="0.3"/>
-  <line x1="18" y1="6" x2="30" y2="15" stroke="#818CF8" stroke-width="0.8" opacity="0.25"/>
-  <line x1="18" y1="12" x2="30" y2="8" stroke="#818CF8" stroke-width="0.8" opacity="0.25"/>
+  <line x1="18" y1="6" x2="30" y2="15" stroke="#818CF8" stroke-width="0.7" opacity="0.2"/>
+  <line x1="18" y1="12" x2="30" y2="8" stroke="#818CF8" stroke-width="0.7" opacity="0.2"/>
   <line x1="18" y1="12" x2="30" y2="15" stroke="#818CF8" stroke-width="0.9" opacity="0.3"/>
-  <line x1="18" y1="12" x2="30" y2="22" stroke="#818CF8" stroke-width="0.8" opacity="0.25"/>
+  <line x1="18" y1="12" x2="30" y2="22" stroke="#818CF8" stroke-width="0.7" opacity="0.2"/>
   <line x1="18" y1="18" x2="30" y2="15" stroke="#818CF8" stroke-width="0.9" opacity="0.3"/>
   <line x1="18" y1="18" x2="30" y2="22" stroke="#818CF8" stroke-width="0.9" opacity="0.3"/>
   <line x1="18" y1="24" x2="30" y2="22" stroke="#818CF8" stroke-width="0.9" opacity="0.3"/>
-  <line x1="18" y1="24" x2="30" y2="15" stroke="#818CF8" stroke-width="0.8" opacity="0.25"/>
+  <line x1="18" y1="24" x2="30" y2="15" stroke="#818CF8" stroke-width="0.7" opacity="0.2"/>
 
   <!-- Connections: middle to tip -->
   <line x1="30" y1="8" x2="44" y2="15" stroke="#A78BFA" stroke-width="1" opacity="0.4"/>
   <line x1="30" y1="15" x2="44" y2="15" stroke="#A78BFA" stroke-width="1.1" opacity="0.45"/>
   <line x1="30" y1="22" x2="44" y2="15" stroke="#A78BFA" stroke-width="1" opacity="0.4"/>
 
-  <!-- Left vertical backbone -->
-  <line x1="18" y1="6" x2="18" y2="24" stroke="#6366F1" stroke-width="1" opacity="0.25"/>
+  <!-- Left backbone -->
+  <line x1="18" y1="6" x2="18" y2="24" stroke="#6366F1" stroke-width="0.9" opacity="0.2"/>
 
-  <!-- Left column nodes — blue (input/knowledge) -->
-  <circle cx="18" cy="6" r="3" fill="#6366F1"/>
-  <circle cx="18" cy="12" r="3" fill="#818CF8"/>
-  <circle cx="18" cy="18" r="3" fill="#818CF8"/>
-  <circle cx="18" cy="24" r="3" fill="#6366F1"/>
+  <!-- Left column nodes — blue outlines (input/knowledge) -->
+  <circle cx="18" cy="6" r="3" fill="none" stroke="#6366F1" stroke-width="1.5"/>
+  <circle cx="18" cy="12" r="3" fill="none" stroke="#818CF8" stroke-width="1.5"/>
+  <circle cx="18" cy="18" r="3" fill="none" stroke="#818CF8" stroke-width="1.5"/>
+  <circle cx="18" cy="24" r="3" fill="none" stroke="#6366F1" stroke-width="1.5"/>
 
-  <!-- Middle layer nodes — purple (processing) -->
-  <circle cx="30" cy="8" r="3.2" fill="#A78BFA"/>
-  <circle cx="30" cy="15" r="3.5" fill="#8B5CF6"/>
-  <circle cx="30" cy="22" r="3.2" fill="#A78BFA"/>
+  <!-- Middle layer nodes — purple outlines (processing) -->
+  <circle cx="30" cy="8" r="3.2" fill="none" stroke="#A78BFA" stroke-width="1.5"/>
+  <circle cx="30" cy="15" r="3.5" fill="none" stroke="#8B5CF6" stroke-width="1.8"/>
+  <circle cx="30" cy="22" r="3.2" fill="none" stroke="#A78BFA" stroke-width="1.5"/>
 
-  <!-- Tip node — green (mastery) -->
-  <circle cx="44" cy="15" r="4" fill="#10B981"/>
-  <circle cx="44" cy="15" r="7" fill="#10B981" opacity="0.08"/>
+  <!-- Tip node — green outline (mastery) -->
+  <circle cx="44" cy="15" r="4" fill="none" stroke="#10B981" stroke-width="2"/>
+  <!-- Glow -->
+  <circle cx="44" cy="15" r="7" fill="#10B981" opacity="0.06"/>
 
-  <!-- Small star/sparkle near tip -->
-  <path d="M48 9 L48.5 7.5 L49 9 L50.5 9.5 L49 10 L48.5 11.5 L48 10 L46.5 9.5 Z" fill="#F59E0B" opacity="0.7"/>
-  <path d="M42 6 L42.3 5 L42.6 6 L43.6 6.3 L42.6 6.6 L42.3 7.6 L42 6.6 L41 6.3 Z" fill="#F59E0B" opacity="0.5"/>
+  <!-- Small stars near tip -->
+  <path d="M49 9 L49.5 7.5 L50 9 L51.5 9.5 L50 10 L49.5 11.5 L49 10 L47.5 9.5 Z" fill="#F59E0B" opacity="0.65"/>
+  <path d="M46 5.5 L46.3 4.5 L46.6 5.5 L47.6 5.8 L46.6 6.1 L46.3 7.1 L46 6.1 L45 5.8 Z" fill="#F59E0B" opacity="0.45"/>
 </svg>
