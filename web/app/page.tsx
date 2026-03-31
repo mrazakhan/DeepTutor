@@ -451,8 +451,8 @@ export default function HomePage() {
     <div className="h-screen flex flex-col animate-fade-in">
       <div className="flex-1 overflow-y-auto flex flex-col items-center px-6 py-8">
         <div className="text-center max-w-2xl mx-auto mb-8">
-          <div className="w-16 h-16 mx-auto mb-4">
-            <Image src="/logo.svg" alt="DeepTutor Logo" width={64} height={64} className="object-contain" priority />
+          <div className="w-24 h-24 mx-auto mb-4">
+            <Image src="/logo.svg" alt="DeepTutor Logo" width={96} height={96} className="object-contain" priority />
           </div>
           <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100 mb-3 tracking-tight">
             {t("Welcome to DeepTutor++")}
