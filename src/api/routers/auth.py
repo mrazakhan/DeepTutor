@@ -13,8 +13,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from sqlalchemy import func
+
 from src.database.engine import get_db, init_db
-from src.database.models import User
+from src.database.models import AllowedEmail, User
 
 router = APIRouter()
 init_db()
@@ -63,10 +65,15 @@ def _get_current_user(request: Request) -> dict | None:
 
 @router.post("/register")
 async def register(body: RegisterRequest):
-    """Create a new student account and return a login token."""
+    """Create a new student account.
+
+    New accounts require admin approval before they can log in.
+    If an email allowlist is configured, only matching emails/domains may register.
+    """
     username = body.username.strip()
     display_name = body.display_name.strip()
     password = body.password
+    email = body.email.strip() if body.email else None
 
     if not username or len(username) < 3:
         raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
@@ -80,36 +87,47 @@ async def register(body: RegisterRequest):
         if db.query(User).filter(User.username == username).first():
             raise HTTPException(status_code=409, detail="Username already taken")
 
-        email = body.email.strip() if body.email else None
+        # ── Email allowlist check ──────────────────────────────────────────────
+        allowlist_count = db.query(func.count(AllowedEmail.id)).scalar() or 0
+        if allowlist_count > 0:
+            if not email:
+                raise HTTPException(
+                    status_code=403,
+                    detail="An email address is required. Contact your administrator for access.",
+                )
+            email_lower = email.lower()
+            domain = "@" + email_lower.split("@")[1] if "@" in email_lower else ""
+            allowed = (
+                db.query(AllowedEmail)
+                .filter(
+                    (AllowedEmail.email_or_domain == email_lower)
+                    | (AllowedEmail.email_or_domain == domain)
+                )
+                .first()
+            )
+            if not allowed:
+                raise HTTPException(
+                    status_code=403,
+                    detail="This email address is not on the approved list. Contact your administrator to request access.",
+                )
+
+        # ── Create user (pending approval) ────────────────────────────────────
         user = User(
             username=username,
             password_hash=_hash_password(password),
             display_name=display_name,
             email=email,
             role="student",
+            approved=False,   # must be approved by admin before login
+            enabled=True,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
 
-        # Auto-login: issue token
-        token = secrets.token_urlsafe(32)
-        _tokens[token] = {
-            "user_id": user.id,
-            "username": user.username,
-            "display_name": user.display_name,
-            "role": user.role,
-            "expires": time.time() + TOKEN_EXPIRY_SECONDS,
-        }
-
         return {
-            "token": token,
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "display_name": user.display_name,
-                "role": user.role,
-            },
+            "pending": True,
+            "message": "Account created successfully. An administrator will review your request shortly.",
         }
     finally:
         db.close()
@@ -123,6 +141,8 @@ async def login(body: LoginRequest):
         user = db.query(User).filter(User.username == body.username).first()
         if not user or user.password_hash != _hash_password(body.password):
             raise HTTPException(status_code=401, detail="Invalid username or password")
+        if not getattr(user, "approved", True):
+            raise HTTPException(status_code=403, detail="Your account is pending admin approval. You will be able to log in once an administrator reviews your request.")
         if not getattr(user, "enabled", True):
             raise HTTPException(status_code=403, detail="Account disabled. Contact your administrator.")
 

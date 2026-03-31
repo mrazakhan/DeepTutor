@@ -20,6 +20,10 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  UserCheck,
+  Plus,
+  X,
+  Mail,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -80,6 +84,21 @@ interface PendingCourse {
   created_at: string;
 }
 
+interface PendingUser {
+  id: string;
+  username: string;
+  display_name: string;
+  email: string | null;
+  created_at: string | null;
+}
+
+interface AllowedEmailEntry {
+  id: string;
+  email_or_domain: string;
+  note: string | null;
+  created_at: string | null;
+}
+
 interface CourseRow {
   id: string;
   name: string;
@@ -91,7 +110,7 @@ interface CourseRow {
   is_custom: boolean;
 }
 
-type Tab = "users" | "sessions" | "overview" | "usage" | "courses";
+type Tab = "approvals" | "users" | "sessions" | "overview" | "usage" | "courses";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -114,7 +133,7 @@ function formatNum(n: number): string {
 export default function AdminPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("users");
+  const [tab, setTab] = useState<Tab>("approvals");
   const [users, setUsers] = useState<UserRow[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -130,6 +149,14 @@ export default function AdminPage() {
   const [allCourses, setAllCourses] = useState<CourseRow[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [coursesLoaded, setCoursesLoaded] = useState(false);
+
+  // Approvals tab state
+  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
+  const [allowedEmails, setAllowedEmails] = useState<AllowedEmailEntry[]>([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+  const [newEmailInput, setNewEmailInput] = useState("");
+  const [newEmailNote, setNewEmailNote] = useState("");
+  const [emailAddError, setEmailAddError] = useState("");
 
   useEffect(() => {
     if (user && user.role !== "admin") router.push("/");
@@ -240,6 +267,88 @@ export default function AdminPage() {
     }
   }, [tab, user, coursesLoaded, loadCourses]);
 
+  const loadApprovals = useCallback(async () => {
+    setApprovalsLoading(true);
+    try {
+      const [pendingRes, allowlistRes] = await Promise.all([
+        fetch(apiUrl("/api/v1/admin/users/pending"), { headers: headers() }),
+        fetch(apiUrl("/api/v1/admin/allowed-emails"), { headers: headers() }),
+      ]);
+      if (pendingRes.ok) setPendingUsers(await pendingRes.json());
+      if (allowlistRes.ok) setAllowedEmails(await allowlistRes.json());
+    } catch (err) {
+      console.error("Failed to load approvals:", err);
+    } finally {
+      setApprovalsLoading(false);
+    }
+  }, [headers]);
+
+  useEffect(() => {
+    if (tab === "approvals" && user?.role === "admin") {
+      loadApprovals();
+    }
+  }, [tab, user, loadApprovals]);
+
+  async function handleApproveUser(userId: string) {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}/approve`), {
+        method: "POST",
+        headers: headers(),
+      });
+      if (res.ok) {
+        setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+        // Refresh full user list so the newly approved user shows up
+        loadData();
+      }
+    } catch { /* skip */ }
+  }
+
+  async function handleRejectUser(userId: string) {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}/reject`), {
+        method: "DELETE",
+        headers: headers(),
+      });
+      if (res.ok) {
+        setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+      }
+    } catch { /* skip */ }
+  }
+
+  async function handleAddAllowedEmail() {
+    setEmailAddError("");
+    const value = newEmailInput.trim().toLowerCase();
+    if (!value) return;
+    try {
+      const res = await fetch(apiUrl("/api/v1/admin/allowed-emails"), {
+        method: "POST",
+        headers: { ...headers(), "Content-Type": "application/json" },
+        body: JSON.stringify({ email_or_domain: value, note: newEmailNote }),
+      });
+      if (res.ok) {
+        const entry = await res.json();
+        setAllowedEmails((prev) => [...prev, entry]);
+        setNewEmailInput("");
+        setNewEmailNote("");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setEmailAddError(data.detail || "Failed to add entry");
+      }
+    } catch { setEmailAddError("Network error"); }
+  }
+
+  async function handleRemoveAllowedEmail(entryId: string) {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/admin/allowed-emails/${entryId}`), {
+        method: "DELETE",
+        headers: headers(),
+      });
+      if (res.ok) {
+        setAllowedEmails((prev) => prev.filter((e) => e.id !== entryId));
+      }
+    } catch { /* skip */ }
+  }
+
   async function handleApproveCourse(courseId: string) {
     try {
       const res = await fetch(
@@ -280,7 +389,8 @@ export default function AdminPage() {
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: typeof Users }[] = [
+  const tabs: { id: Tab; label: string; icon: typeof Users; badge?: number }[] = [
+    { id: "approvals", label: "Approvals", icon: UserCheck, badge: pendingUsers.length },
     { id: "users", label: "Users", icon: Users },
     { id: "usage", label: "Usage", icon: TrendingUp },
     { id: "sessions", label: "Sessions", icon: Activity },
@@ -318,6 +428,11 @@ export default function AdminPage() {
           >
             <t.icon className="w-4 h-4" />
             {t.label}
+            {t.badge != null && t.badge > 0 && (
+              <span className="ml-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold px-1">
+                {t.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -369,6 +484,158 @@ export default function AdminPage() {
                   Done
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* ═══════════ Approvals Tab ═══════════ */}
+          {tab === "approvals" && (
+            <div className="space-y-10">
+              {approvalsLoading ? (
+                <div className="text-center py-20 text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  Loading...
+                </div>
+              ) : (
+                <>
+                  {/* ── Pending Membership Requests ── */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-amber-500" />
+                      Pending Membership Requests
+                      {pendingUsers.length > 0 && (
+                        <span className="ml-1 text-sm font-normal text-amber-500">
+                          ({pendingUsers.length})
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-slate-400 mb-4">
+                      New accounts waiting for your approval before they can log in.
+                    </p>
+                    {pendingUsers.length === 0 ? (
+                      <div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                        <UserCheck className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                        No pending requests
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {pendingUsers.map((u) => (
+                          <div
+                            key={u.id}
+                            className="flex items-center justify-between p-4 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10"
+                          >
+                            <div>
+                              <div className="font-medium text-slate-900 dark:text-slate-100">
+                                {u.display_name}
+                              </div>
+                              <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                                <span>@{u.username}</span>
+                                {u.email && (
+                                  <>
+                                    <span>·</span>
+                                    <span className="flex items-center gap-1">
+                                      <Mail className="w-3 h-3" />
+                                      {u.email}
+                                    </span>
+                                  </>
+                                )}
+                                <span>·</span>
+                                <span>Requested {formatDate(u.created_at)}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                              <button
+                                onClick={() => handleApproveUser(u.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectUser(u.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                              >
+                                <XCircle className="w-4 h-4" />
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Email Allowlist ── */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1 flex items-center gap-2">
+                      <Mail className="w-5 h-5 text-blue-500" />
+                      Email Allowlist
+                    </h3>
+                    <p className="text-sm text-slate-400 mb-4">
+                      Only these email addresses or domains can register. If the list is empty, anyone can submit a registration request.
+                      Use <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">@school.edu</code> to allow an entire domain.
+                    </p>
+
+                    {/* Add new entry */}
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        value={newEmailInput}
+                        onChange={(e) => setNewEmailInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddAllowedEmail()}
+                        placeholder="user@example.com or @example.com"
+                        className="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                      />
+                      <input
+                        type="text"
+                        value={newEmailNote}
+                        onChange={(e) => setNewEmailNote(e.target.value)}
+                        placeholder="Note (optional)"
+                        className="w-40 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                      />
+                      <button
+                        onClick={handleAddAllowedEmail}
+                        disabled={!newEmailInput.trim()}
+                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add
+                      </button>
+                    </div>
+                    {emailAddError && (
+                      <p className="text-sm text-red-500 mb-3">{emailAddError}</p>
+                    )}
+
+                    {/* Allowlist entries */}
+                    {allowedEmails.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-sm">
+                        Allowlist is empty — anyone can submit a registration request
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                        {allowedEmails.map((e) => (
+                          <div key={e.id} className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-800/50">
+                            <div>
+                              <span className="font-mono text-sm text-slate-800 dark:text-slate-200">
+                                {e.email_or_domain}
+                              </span>
+                              {e.note && (
+                                <span className="ml-3 text-xs text-slate-400">{e.note}</span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleRemoveAllowedEmail(e.id)}
+                              className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 transition-colors"
+                              title="Remove"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

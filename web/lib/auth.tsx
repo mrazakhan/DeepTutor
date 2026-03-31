@@ -14,7 +14,7 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, displayName: string, email?: string) => Promise<void>;
+  register: (username: string, password: string, displayName: string, email?: string) => Promise<{ pending: boolean }>;
   logout: () => Promise<void>;
 }
 
@@ -22,7 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   login: async () => {},
-  register: async () => {},
+  register: async () => ({ pending: false }),
   logout: async () => {},
 });
 
@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   }
 
-  async function register(username: string, password: string, displayName: string, email?: string) {
+  async function register(username: string, password: string, displayName: string, email?: string): Promise<{ pending: boolean }> {
     const res = await fetch(apiUrl("/api/v1/auth/register"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,8 +103,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.detail || "Registration failed");
     }
     const data = await res.json();
-    setToken(data.token);
-    setUser(data.user);
+    // New accounts are pending approval — no token is issued
+    if (data.pending) {
+      return { pending: true };
+    }
+    // Fallback: if server issued a token (e.g. future admin-created accounts)
+    if (data.token) {
+      setToken(data.token);
+      setUser(data.user);
+    }
+    return { pending: false };
   }
 
   async function logout() {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { Loader2 } from "lucide-react";
+import { Loader2, Clock, CheckCircle } from "lucide-react";
 import Image from "next/image";
 
 export default function SignupPage() {
@@ -17,6 +17,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(false);
 
   // Redirect if already logged in
   if (user) {
@@ -39,13 +40,55 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await register(username, password, displayName, email);
-      router.push("/");
+      const result = await register(username, password, displayName, email);
+      if (result.pending) {
+        setPending(true);
+      } else {
+        router.push("/");
+      }
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {
       setLoading(false);
     }
+  }
+
+  // ── Pending approval screen ──────────────────────────────────────────
+  if (pending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-6">
+            <Clock className="w-8 h-8 text-amber-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-3">
+            Request submitted!
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-2">
+            Your account for <span className="font-medium text-slate-700 dark:text-slate-300">@{username}</span> has been created and is awaiting admin approval.
+          </p>
+          <p className="text-slate-400 dark:text-slate-500 text-sm mb-8">
+            You will be able to sign in once an administrator reviews and approves your request. Please check back later.
+          </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-xs text-slate-400 justify-center">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              Account created successfully
+            </div>
+            <div className="flex items-center gap-2 text-xs text-amber-500 justify-center">
+              <Clock className="w-4 h-4" />
+              Waiting for admin approval
+            </div>
+          </div>
+          <Link
+            href="/login"
+            className="mt-8 inline-block text-sm text-blue-500 hover:text-blue-600 font-medium"
+          >
+            Back to sign in
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (

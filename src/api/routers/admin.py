@@ -12,7 +12,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from sqlalchemy import func
 
 from src.database.engine import get_db
+from pydantic import BaseModel
+
 from src.database.models import (
+    AllowedEmail,
     AssessmentAnswer,
     Course,
     LLMUsageLog,
@@ -382,6 +385,147 @@ async def daily_usage(request: Request, days: int = 30):
             daily[str(day)]["exams"] = exams
 
         return [{"date": d, **v} for d, v in sorted(daily.items())]
+    finally:
+        db.close()
+
+
+# ── Membership approval ───────────────────────────────────────────────
+
+
+@router.get("/users/pending")
+async def list_pending_users(request: Request):
+    """List student accounts awaiting admin approval."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        pending = (
+            db.query(User)
+            .filter(User.approved == False, User.role == "student")
+            .order_by(User.created_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "display_name": u.display_name,
+                "email": getattr(u, "email", None),
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in pending
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/users/{user_id}/approve")
+async def approve_user(user_id: str, request: Request):
+    """Approve a pending user account, allowing them to log in."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.approved = True
+        db.commit()
+        return {"user_id": user_id, "username": user.username, "approved": True}
+    finally:
+        db.close()
+
+
+@router.delete("/users/{user_id}/reject")
+async def reject_user(user_id: str, request: Request):
+    """Reject and permanently delete a pending user account."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if getattr(user, "approved", True):
+            raise HTTPException(
+                status_code=400,
+                detail="User is already approved. Use the delete action instead.",
+            )
+        username = user.username
+        db.delete(user)
+        db.commit()
+        return {"rejected": True, "username": username}
+    finally:
+        db.close()
+
+
+# ── Email allowlist ───────────────────────────────────────────────────
+
+
+class AllowedEmailRequest(BaseModel):
+    email_or_domain: str  # e.g. "user@school.edu" or "@school.edu"
+    note: str = ""
+
+
+@router.get("/allowed-emails")
+async def list_allowed_emails(request: Request):
+    """List all entries in the email allowlist."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        entries = db.query(AllowedEmail).order_by(AllowedEmail.created_at.asc()).all()
+        return [
+            {
+                "id": e.id,
+                "email_or_domain": e.email_or_domain,
+                "note": e.note,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in entries
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/allowed-emails")
+async def add_allowed_email(body: AllowedEmailRequest, request: Request):
+    """Add an email address or domain (@school.edu) to the allowlist."""
+    _require_admin(request)
+    value = body.email_or_domain.strip().lower()
+    if not value:
+        raise HTTPException(status_code=400, detail="email_or_domain is required")
+
+    db = get_db()
+    try:
+        if db.query(AllowedEmail).filter(AllowedEmail.email_or_domain == value).first():
+            raise HTTPException(status_code=409, detail="Entry already exists")
+        entry = AllowedEmail(
+            email_or_domain=value,
+            note=body.note.strip() or None,
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return {
+            "id": entry.id,
+            "email_or_domain": entry.email_or_domain,
+            "note": entry.note,
+            "created_at": entry.created_at.isoformat() if entry.created_at else None,
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/allowed-emails/{entry_id}")
+async def remove_allowed_email(entry_id: str, request: Request):
+    """Remove an entry from the email allowlist."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        entry = db.query(AllowedEmail).filter(AllowedEmail.id == entry_id).first()
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        value = entry.email_or_domain
+        db.delete(entry)
+        db.commit()
+        return {"deleted": True, "email_or_domain": value}
     finally:
         db.close()
 

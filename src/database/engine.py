@@ -49,6 +49,8 @@ def init_db():
         ("mock_exams", "ap_score", "INTEGER"),
         ("courses", "is_approved", "BOOLEAN DEFAULT 1"),
         ("courses", "created_by", "VARCHAR"),
+        # Approval workflow: existing users are pre-approved (DEFAULT 1)
+        ("users", "approved", "BOOLEAN DEFAULT 1"),
     ]
     with engine.connect() as conn:
         for table, column, col_type in _migrate_columns:

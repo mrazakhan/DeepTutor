@@ -130,11 +130,31 @@ class User(Base):
     email = Column(String(200), nullable=True)
     role = Column(String(20), nullable=False, default="student")  # student | admin
     enabled = Column(Boolean, default=True, nullable=False)
+    approved = Column(Boolean, default=False, nullable=False)  # admin must approve new registrations
     created_at = Column(DateTime, default=utcnow)
     last_login_at = Column(DateTime, nullable=True)
 
     assessments = relationship("TopicAssessment", back_populates="user", cascade="all, delete-orphan")
     favorite_courses = relationship("UserCourseFavorite", back_populates="user", cascade="all, delete-orphan")
+
+
+class AllowedEmail(Base):
+    """Email addresses or domains allowed to register (allowlist).
+
+    Entries can be:
+      - An exact email: "student@school.edu"
+      - A domain:       "@school.edu"  (matches any address at that domain)
+
+    If the table is empty, the allowlist is disabled and anyone can attempt
+    to register (subject to admin approval).
+    """
+
+    __tablename__ = "allowed_emails"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    email_or_domain = Column(String(200), unique=True, nullable=False)
+    note = Column(String(200), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class UserCourseFavorite(Base):
