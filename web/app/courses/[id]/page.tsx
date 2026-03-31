@@ -40,9 +40,11 @@ interface UnitDetail {
 }
 
 interface ExamSection {
-  name: string;
+  name?: string;
+  type?: string;
   count: number;
-  minutes: number;
+  minutes?: number;
+  time_minutes?: number;
   calculator?: boolean;
 }
 
@@ -391,11 +393,11 @@ export default function CourseDetailPage({
                 className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
               >
                 <div className="font-medium text-slate-800 dark:text-slate-200 text-sm mb-1">
-                  {section.name}
+                  {section.name || section.type || "Section"}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
                   <div>
-                    {section.count} {t("questions")} &middot; {section.minutes} {t("minutes")}
+                    {section.count} {t("questions")} &middot; {section.minutes || section.time_minutes || 0} {t("minutes")}
                   </div>
                   {section.calculator !== undefined && (
                     <div>
