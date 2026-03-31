@@ -37,11 +37,11 @@ interface NavItem {
 }
 
 // All available navigation items (static reference)
-const ALL_NAV_ITEMS: Record<string, { icon: LucideIcon; nameKey: string }> = {
-  "/": { icon: Home, nameKey: "Home" },
-  "/courses": { icon: Library, nameKey: "AP Courses" },
-  "/progress": { icon: BarChart3, nameKey: "My Progress" },
-  "/counseling": { icon: Map, nameKey: "Counseling" },
+const ALL_NAV_ITEMS: Record<string, { icon: LucideIcon; nameKey: string; color: string }> = {
+  "/": { icon: Home, nameKey: "Home", color: "text-blue-500 dark:text-blue-400" },
+  "/courses": { icon: Library, nameKey: "AP Courses", color: "text-violet-500 dark:text-violet-400" },
+  "/progress": { icon: BarChart3, nameKey: "My Progress", color: "text-emerald-500 dark:text-emerald-400" },
+  "/counseling": { icon: Map, nameKey: "Counseling", color: "text-amber-500 dark:text-amber-400" },
 };
 
 export default function Sidebar() {
@@ -299,7 +299,7 @@ export default function Sidebar() {
                   <item.icon
                     className={`w-5 h-5 flex-shrink-0 transition-colors ${
                       isActive
-                        ? "text-blue-500 dark:text-blue-400"
+                        ? (ALL_NAV_ITEMS[item.href]?.color || "text-blue-500 dark:text-blue-400")
                         : "text-slate-400 dark:text-slate-500 group-hover:text-blue-500 dark:group-hover:text-blue-400"
                     }`}
                   />

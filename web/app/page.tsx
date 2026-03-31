@@ -10,6 +10,9 @@ import {
   Code,
   FlaskConical,
   Star,
+  GraduationCap,
+  Upload,
+  MessageCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { apiUrl } from "@/lib/api";
@@ -52,6 +55,10 @@ const SUBJECT_COLOR: Record<string, { text: string; bg: string }> = {
   science: {
     text: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-50 dark:bg-emerald-900/30",
+  },
+  custom: {
+    text: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-900/30",
   },
 };
 
@@ -280,6 +287,37 @@ export default function HomePage() {
             </div>
           ) : (
             <>
+              {/* Counseling Card */}
+              <div>
+                <Link
+                  href="/counseling"
+                  className="block p-5 rounded-2xl border border-violet-200 dark:border-violet-800 bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-900/20 dark:to-blue-900/20 hover:shadow-lg transition-all group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center flex-shrink-0">
+                      <GraduationCap className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-lg">
+                        {t("College Admissions Counseling")}
+                      </h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                        {t("Upload your resume, chat with an AI counselor, and get a personalized roadmap for top STEM programs")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="hidden sm:flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
+                        <Upload className="w-3 h-3" /> Resume
+                      </span>
+                      <span className="hidden sm:flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                        <MessageCircle className="w-3 h-3" /> Chat
+                      </span>
+                      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-violet-500 transition-colors" />
+                    </div>
+                  </div>
+                </Link>
+              </div>
+
               {/* My Courses (favorited) */}
               {favoritedCourses.length > 0 && (
                 <div>
@@ -294,17 +332,44 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* All Courses */}
-              <div>
-                <div className="flex items-center justify-between mb-4 px-1">
-                  <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {favoritedCourses.length > 0 ? t("All Courses") : t("Courses")}
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {otherCourses.map(renderCourseCard)}
-                </div>
-              </div>
+              {/* Grouped Courses */}
+              {(() => {
+                const groups: Record<string, { label: string; icon: typeof Code; courses: typeof otherCourses }> = {
+                  computer_science: { label: "Computer Science", icon: Code, courses: [] },
+                  math: { label: "Mathematics", icon: Calculator, courses: [] },
+                  science: { label: "Science", icon: FlaskConical, courses: [] },
+                  custom: { label: "Custom Courses", icon: BookOpen, courses: [] },
+                };
+                for (const c of otherCourses) {
+                  const area = c.code.startsWith("CUSTOM_") ? "custom" : (c.subject_area || "custom");
+                  if (groups[area]) {
+                    groups[area].courses.push(c);
+                  } else {
+                    groups.custom.courses.push(c);
+                  }
+                }
+                return Object.entries(groups)
+                  .filter(([, g]) => g.courses.length > 0)
+                  .map(([key, g]) => {
+                    const GroupIcon = g.icon;
+                    const color = SUBJECT_COLOR[key] || { text: "text-slate-600 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-800" };
+                    return (
+                      <div key={key}>
+                        <div className="flex items-center gap-2 mb-4 px-1">
+                          <div className={`p-1 rounded-md ${color.bg}`}>
+                            <GroupIcon className={`w-4 h-4 ${color.text}`} />
+                          </div>
+                          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            {t(g.label)} ({g.courses.length})
+                          </h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {g.courses.map(renderCourseCard)}
+                        </div>
+                      </div>
+                    );
+                  });
+              })()}
             </>
           )}
         </div>
