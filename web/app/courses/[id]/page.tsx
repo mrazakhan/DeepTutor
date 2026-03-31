@@ -558,10 +558,10 @@ export default function CourseDetailPage({
                     return (
                       <button
                         onClick={(e) => resetProgress("unit", unit.id, e)}
-                        title="Reset progress for this unit"
-                        className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
+                        title="Reset MCQ & FRQ progress for all topics in this unit"
+                        className="w-7 h-7 rounded-md flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-4 h-4" />
                       </button>
                     );
                   })()}
@@ -601,10 +601,10 @@ export default function CourseDetailPage({
                           >
                             <button
                               onClick={(e) => resetProgress("topic", topic.id, e)}
-                              title="Reset progress for this topic"
-                              className="w-5 h-5 rounded flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Reset MCQ & FRQ progress for this topic"
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                             >
-                              <RotateCcw className="w-3 h-3" />
+                              <RotateCcw className="w-3.5 h-3.5" />
                             </button>
                             <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                               <div
