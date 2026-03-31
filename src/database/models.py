@@ -33,13 +33,15 @@ class Course(Base):
     __tablename__ = "courses"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    code = Column(String(30), unique=True, nullable=False)  # e.g. "AP_CSA"
+    code = Column(String(100), unique=True, nullable=False)  # e.g. "AP_CSA", "CUSTOM_ALGEBRA2_abc123"
     name = Column(String(200), nullable=False)
     subject_area = Column(String(50), nullable=False)  # computer_science, math, science
     description = Column(Text)
     exam_format = Column(Text)  # JSON string
     reference_materials = Column(Text)  # JSON string
     is_active = Column(Boolean, default=True)
+    is_approved = Column(Boolean, default=True)  # False for custom courses until admin approves
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # NULL for seeded courses
     created_at = Column(DateTime, default=utcnow)
 
     units = relationship("Unit", back_populates="course", cascade="all, delete-orphan",

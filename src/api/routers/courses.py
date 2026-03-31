@@ -5,7 +5,10 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File
+import tempfile
+import uuid as _uuid
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 
 from src.database.engine import get_db, init_db
@@ -36,14 +39,29 @@ init_db()
 
 
 @router.get("/list")
-async def list_courses(subject_area: str | None = None):
-    """List all AP courses, optionally filtered by subject area."""
+async def list_courses(subject_area: str | None = None, request: Request = None):
+    """List courses visible to the current user (approved + own custom courses)."""
+    from src.api.routers.auth import _get_current_user
+
+    user = _get_current_user(request) if request else None
+    user_id = user["user_id"] if user else None
+
     db = get_db()
     try:
         query = db.query(Course).filter(Course.is_active == True)
         if subject_area:
             query = query.filter(Course.subject_area == subject_area)
         courses = query.order_by(Course.subject_area, Course.name).all()
+
+        # Filter: show approved courses + user's own unapproved custom courses
+        visible = []
+        for c in courses:
+            is_approved = getattr(c, "is_approved", True)
+            created_by = getattr(c, "created_by", None)
+            if is_approved is None or is_approved:
+                visible.append(c)
+            elif user_id and created_by == user_id:
+                visible.append(c)
 
         return [
             {
@@ -54,8 +72,10 @@ async def list_courses(subject_area: str | None = None):
                 "description": c.description,
                 "unit_count": len(c.units),
                 "topic_count": sum(len(u.topics) for u in c.units),
+                "is_custom": c.code.startswith("CUSTOM_") if c.code else False,
+                "is_approved": getattr(c, "is_approved", True),
             }
-            for c in courses
+            for c in visible
         ]
     finally:
         db.close()
@@ -74,6 +94,230 @@ async def list_subjects():
                 subjects[area] = {"subject_area": area, "count": 0, "label": _subject_label(area)}
             subjects[area]["count"] += 1
         return list(subjects.values())
+    finally:
+        db.close()
+
+
+# ---------- custom course from syllabus ----------
+
+
+def _extract_syllabus_text(file_path: str, ext: str) -> str:
+    """Extract text from uploaded syllabus file."""
+    if ext == "pdf":
+        import fitz
+        doc = fitz.open(file_path)
+        text = "\n".join(page.get_text() for page in doc)
+        doc.close()
+        return text.strip()
+    elif ext in ("docx", "doc"):
+        try:
+            import docx
+            doc = docx.Document(file_path)
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        except ImportError:
+            import zipfile, re
+            with zipfile.ZipFile(file_path) as z:
+                xml = z.read("word/document.xml").decode("utf-8")
+                text = re.sub(r"<[^>]+>", " ", xml)
+                return re.sub(r"\s+", " ", text).strip()
+    elif ext == "txt":
+        return Path(file_path).read_text(errors="replace")
+    return ""
+
+
+@router.post("/parse-syllabus")
+async def parse_syllabus(request: Request, file: UploadFile = File(...)):
+    """Upload a syllabus PDF and parse it into a course structure using LLM."""
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    filename = file.filename or "syllabus"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ("pdf", "docx", "doc", "txt"):
+        raise HTTPException(status_code=400, detail="Upload a PDF, DOCX, or TXT file.")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum 10 MB.")
+
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        syllabus_text = _extract_syllabus_text(tmp_path, ext)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    if not syllabus_text or len(syllabus_text.strip()) < 50:
+        raise HTTPException(status_code=400, detail="Could not extract sufficient text from the file.")
+
+    # Use LLM to parse syllabus into structured course
+    from src.services.llm.factory import stream as llm_stream
+    from src.services.llm.config import get_llm_config
+
+    parse_prompt = f"""Analyze this course syllabus and extract a structured course outline.
+
+For each chapter/unit listed, expand it into 3-6 specific subtopics based on standard curriculum knowledge for this subject.
+
+Return ONLY valid JSON (no markdown fences, no explanation) in this exact format:
+{{
+  "name": "Course Name (e.g., Algebra 2)",
+  "subject_area": "math|science|computer_science|english|history|other",
+  "description": "Brief course description (2-3 sentences)",
+  "units": [
+    {{
+      "number": 1,
+      "title": "Chapter/Unit Title",
+      "topics": [
+        {{"num": "1.1", "title": "Specific Subtopic Title", "description": "Brief description of what this covers"}},
+        {{"num": "1.2", "title": "Another Subtopic", "description": "Brief description"}}
+      ]
+    }}
+  ]
+}}
+
+Rules:
+- Extract ALL chapters/units from the syllabus
+- Expand each chapter into 3-6 subtopics based on what's typically covered in this subject
+- Topic numbers follow "unit.topic" format (e.g., "3.2" for unit 3, topic 2)
+- Ignore administrative content (grading policies, attendance, etc.)
+- Focus only on academic content and learning objectives
+- subject_area must be one of: math, science, computer_science, english, history, other
+
+=== SYLLABUS TEXT ===
+{syllabus_text[:8000]}"""
+
+    llm_config = get_llm_config()
+    full_response = ""
+    async for chunk in llm_stream(
+        prompt=parse_prompt,
+        system_prompt="You are a curriculum expert. Extract course structure from syllabi. Return only valid JSON.",
+        model=llm_config.model,
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url,
+        binding=getattr(llm_config, "binding", None),
+        temperature=0.3,
+        max_tokens=4096,
+    ):
+        full_response += chunk
+
+    # Parse the JSON response
+    try:
+        # Clean up common LLM JSON issues
+        cleaned = full_response.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse syllabus structure. Please try again.")
+
+    # Generate a unique course code
+    short_id = str(_uuid.uuid4())[:8]
+    course_name = parsed.get("name", "Custom Course")
+    code_base = course_name.upper().replace(" ", "_")[:30]
+    parsed["code"] = f"CUSTOM_{code_base}_{short_id}"
+
+    # Add exam format for custom courses (MCQ + FRQ, no AP specifics)
+    parsed["exam_format"] = {
+        "sections": [
+            {"type": "mcq", "count": 10, "time_minutes": 20},
+            {"type": "frq", "count": 3, "time_minutes": 30},
+        ],
+        "is_custom": True,
+    }
+
+    return parsed
+
+
+class CreateCustomCourseRequest(BaseModel):
+    name: str
+    code: str
+    subject_area: str
+    description: str = ""
+    exam_format: dict | None = None
+    units: list
+
+
+@router.post("/create-custom")
+async def create_custom_course(request: Request, body: CreateCustomCourseRequest):
+    """Create a custom course from a parsed syllabus structure."""
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    user_id = user["user_id"]
+
+    # Ensure code starts with CUSTOM_
+    code = body.code if body.code.startswith("CUSTOM_") else f"CUSTOM_{body.code}"
+
+    db = get_db()
+    try:
+        # Check for duplicate code
+        existing = db.query(Course).filter(Course.code == code).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="A course with this code already exists.")
+
+        # Create course
+        course = Course(
+            code=code,
+            name=body.name,
+            subject_area=body.subject_area,
+            description=body.description,
+            exam_format=json.dumps(body.exam_format) if body.exam_format else None,
+            is_active=True,
+            is_approved=False,
+            created_by=user_id,
+        )
+        db.add(course)
+        db.flush()  # Get course.id
+
+        # Create units and topics
+        total_topics = 0
+        for unit_data in body.units:
+            unit = Unit(
+                course_id=course.id,
+                unit_number=unit_data.get("number", 1),
+                title=unit_data.get("title", ""),
+                description=unit_data.get("description", ""),
+            )
+            db.add(unit)
+            db.flush()
+
+            for topic_data in unit_data.get("topics", []):
+                topic = Topic(
+                    unit_id=unit.id,
+                    topic_number=str(topic_data.get("num", "")),
+                    title=topic_data.get("title", ""),
+                    description=topic_data.get("description", ""),
+                )
+                db.add(topic)
+                total_topics += 1
+
+        db.commit()
+
+        return {
+            "success": True,
+            "course_id": course.id,
+            "code": course.code,
+            "name": course.name,
+            "unit_count": len(body.units),
+            "topic_count": total_topics,
+            "is_approved": False,
+            "message": "Course created. An admin will review and approve it.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create course: {str(e)}")
     finally:
         db.close()
 
@@ -386,6 +630,69 @@ _PROMPT_MISTAKES = (
     "illustrate the correct vs incorrect approach."
 )
 
+# ── Custom course prompt variants (non-AP) ──
+
+_PROMPT_INTRO_CUSTOM = (
+    "Provide a comprehensive introduction to the topic '{topic_title}' "
+    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}. Cover the key concepts, explain them clearly for a student "
+    "seeing this for the first time, and include worked examples where appropriate. "
+    "Use markdown formatting with ## headers, bullet points, and examples."
+)
+
+_PROMPT_MCQ_CUSTOM = (
+    "Create a challenging but fair multiple choice practice question about "
+    "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}.\n\n"
+    "Use 4 answer choices (A-D).\n\n"
+    "CRITICAL: The correct answer MUST be placed at position {correct_position}. "
+    "Do NOT always put the correct answer at the same position.\n\n"
+    "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+    '{{\n'
+    '  "question": "The question text here (use \\n for newlines)",\n'
+    '  "options": {{\n'
+    '    "A": "First option",\n'
+    '    "B": "Second option",\n'
+    '    "C": "Third option",\n'
+    '    "D": "Fourth option"\n'
+    '  }},\n'
+    '  "correct": "{correct_position}",\n'
+    '  "explanation": "Detailed step-by-step explanation showing the work",\n'
+    '  "category": "The concept category tested"\n'
+    '}}\n\n'
+    "For math topics: include calculation problems where students must show work. "
+    "For other subjects: test understanding, application, and analysis. "
+    "The explanation MUST show the complete solution process.{variation_hint}"
+)
+
+_PROMPT_FRQ_CUSTOM = (
+    "Create a practice problem about '{topic_title}' "
+    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} in {course_name}.\n\n"
+    "This should be a multi-step problem requiring detailed work.\n\n"
+    "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+    '{{\n'
+    '  "question": "Full problem statement with all given information and what to find/solve",\n'
+    '  "frq_type": "Problem Solving",\n'
+    '  "sample_solution": "Complete step-by-step solution showing all work",\n'
+    '  "rubric": "Point-by-point scoring criteria",\n'
+    '  "explanation": "Explanation of the approach and key concepts used"\n'
+    '}}\n\n'
+    "The problem should test real understanding, not just memorization.{variation_hint}"
+)
+
+_PROMPT_MISTAKES_CUSTOM = (
+    "What are the most common mistakes and misconceptions students have about "
+    "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}? For each mistake, explain: what students get wrong, why they "
+    "get confused, and how to avoid the error. Include specific examples."
+)
+
+
+def _is_custom_course(course_code: str) -> bool:
+    """Check if a course is a custom (non-AP) course."""
+    return course_code.startswith("CUSTOM_") if course_code else False
+
+
 # How many practice questions of each type to generate per topic
 _MCQ_COUNT = 10
 _FRQ_COUNT = 2
@@ -514,6 +821,13 @@ async def preload_topic_content(
             )
             return result.get("response", "")
 
+        # Select prompt templates based on course type
+        is_custom = _is_custom_course(course.code)
+        prompt_intro = _PROMPT_INTRO_CUSTOM if is_custom else _PROMPT_INTRO
+        prompt_mcq = _PROMPT_MCQ_CUSTOM if is_custom else _PROMPT_MCQ
+        prompt_frq = _PROMPT_FRQ_CUSTOM if is_custom else _PROMPT_FRQ
+        prompt_mistakes = _PROMPT_MISTAKES_CUSTOM if is_custom else _PROMPT_MISTAKES
+
         # If extending existing content, only generate the missing MCQs
         if extend_existing:
             content_dict = extend_content
@@ -523,7 +837,7 @@ async def preload_topic_content(
             content_dict = {}
             # 1. Generate intro
             logger.info(f"Generating 'intro' for {topic.topic_number} {topic.title}...")
-            content_dict["intro"] = await _generate(_PROMPT_INTRO.format(**fmt))
+            content_dict["intro"] = await _generate(prompt_intro.format(**fmt))
             mcq_list = []
 
         # 2. Generate MCQs (starting from where we left off)
@@ -533,18 +847,18 @@ async def preload_topic_content(
             "\n\nMake this a TRICKY question that tests edge cases or subtle details that students often miss.",
             "\n\nCreate a question that requires applying this concept to a real-world scenario.",
             "\n\nWrite a question that tests understanding of WHY something works, not just WHAT happens.",
-            "\n\nMake this question involve reading and tracing through a short code snippet.",
-            "\n\nCreate a question where the student must identify what is WRONG with given code.",
+            "\n\nMake this question involve detailed step-by-step problem solving.",
+            "\n\nCreate a question where the student must identify an error in a given solution.",
             "\n\nWrite a question that combines this topic with a closely related concept.",
             "\n\nMake this an easy warm-up question testing basic recall of this topic.",
-            "\n\nCreate a challenging question that would appear at the end of the AP exam.",
+            "\n\nCreate a challenging question that tests deep understanding.",
         ]
         _answer_positions = ["A", "B", "C", "D"]
         for i in range(extend_mcq_start, _MCQ_COUNT):
             hint = variation_hints[i] if i < len(variation_hints) else variation_hints[-1]
             correct_pos = _answer_positions[i % 4]  # Cycle through A, B, C, D
             logger.info(f"Generating MCQ {i+1}/{_MCQ_COUNT} for {topic.topic_number}...")
-            raw = await _generate(_PROMPT_MCQ.format(**fmt, variation_hint=hint, correct_position=correct_pos))
+            raw = await _generate(prompt_mcq.format(**fmt, variation_hint=hint, correct_position=correct_pos))
             parsed = _parse_json_response(raw)
             if parsed and all(k in parsed for k in ("question", "options", "correct", "explanation")):
                 mcq_list.append(parsed)
@@ -555,13 +869,15 @@ async def preload_topic_content(
 
         # Skip non-MCQ generation when extending existing content
         if not extend_existing:
-            # 3. Generate multiple FRQs (only if the course exam has FRQ sections)
-            has_frq_section = False
-            if course.exam_format:
+            # 3. Generate FRQs — for custom courses, always generate practice problems
+            has_frq_section = is_custom  # Custom courses always get practice problems
+            if not is_custom and course.exam_format:
                 try:
                     ef = json.loads(course.exam_format) if isinstance(course.exam_format, str) else course.exam_format
                     has_frq_section = any(
-                        "free response" in s.get("name", "").lower() or "frq" in s.get("name", "").lower()
+                        "free response" in s.get("name", "").lower()
+                        or "frq" in s.get("name", "").lower()
+                        or s.get("type", "") == "frq"
                         for s in ef.get("sections", [])
                     )
                 except (json.JSONDecodeError, TypeError):
@@ -571,12 +887,12 @@ async def preload_topic_content(
                 frq_list = []
                 frq_hints = [
                     "",
-                    "\n\nMake this a DIFFERENT style of FRQ focusing on a different aspect of the topic.",
+                    "\n\nMake this a DIFFERENT style of problem focusing on a different aspect of the topic.",
                 ]
                 for i in range(_FRQ_COUNT):
                     hint = frq_hints[i] if i < len(frq_hints) else frq_hints[-1]
                     logger.info(f"Generating FRQ {i+1}/{_FRQ_COUNT} for {topic.topic_number}...")
-                    raw = await _generate(_PROMPT_FRQ.format(**fmt, variation_hint=hint))
+                    raw = await _generate(prompt_frq.format(**fmt, variation_hint=hint))
                     parsed = _parse_json_response(raw)
                     if parsed and all(k in parsed for k in ("question", "sample_solution", "explanation")):
                         frq_list.append(parsed)
@@ -587,13 +903,16 @@ async def preload_topic_content(
             else:
                 logger.info(f"Skipping FRQ generation for {course.name} (no FRQ exam section)")
 
-            # 4. Generate exam info
-            logger.info(f"Generating 'exam' for {topic.topic_number}...")
-            content_dict["exam"] = await _generate(_PROMPT_EXAM.format(**fmt))
+            # 4. Generate exam info (skip for custom courses)
+            if not is_custom:
+                logger.info(f"Generating 'exam' for {topic.topic_number}...")
+                content_dict["exam"] = await _generate(_PROMPT_EXAM.format(**fmt))
+            else:
+                logger.info(f"Skipping AP exam info for custom course {course.name}")
 
             # 5. Generate common mistakes
             logger.info(f"Generating 'mistakes' for {topic.topic_number}...")
-            content_dict["mistakes"] = await _generate(_PROMPT_MISTAKES.format(**fmt))
+            content_dict["mistakes"] = await _generate(prompt_mistakes.format(**fmt))
 
             if not content_dict.get("intro"):
                 raise HTTPException(status_code=500, detail="Failed to generate content")
