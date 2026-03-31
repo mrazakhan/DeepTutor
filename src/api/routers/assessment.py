@@ -318,6 +318,97 @@ async def get_course_dimensions(course_id: str, request: Request):
         db.close()
 
 
+@router.get("/{course_id}/progress/mistakes")
+async def get_course_mistakes(course_id: str, request: Request, limit: int = 100):
+    """Get wrong answers for a user across all topics in a course.
+
+    Returns mistakes grouped by topic with full question/answer context.
+    """
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        # Get all topic IDs with their context
+        topic_map = {}  # topic_id -> {topic_title, topic_number, unit_title, unit_number}
+        for unit in course.units:
+            for topic in unit.topics:
+                topic_map[topic.id] = {
+                    "topic_title": topic.title,
+                    "topic_number": topic.topic_number,
+                    "unit_title": unit.title,
+                    "unit_number": unit.unit_number,
+                }
+
+        # Get assessments for this user in this course
+        assessments = (
+            db.query(TopicAssessment)
+            .filter(
+                TopicAssessment.user_id == user_id,
+                TopicAssessment.topic_id.in_(list(topic_map.keys())),
+            )
+            .all()
+        )
+
+        assessment_map = {a.topic_id: a.id for a in assessments}
+
+        if not assessment_map:
+            return {"mistakes": {}, "total_mistakes": 0}
+
+        # Get wrong answers across all assessments
+        wrong_answers = (
+            db.query(AssessmentAnswer)
+            .filter(
+                AssessmentAnswer.assessment_id.in_(list(assessment_map.values())),
+                AssessmentAnswer.is_correct == False,  # noqa: E712
+            )
+            .order_by(AssessmentAnswer.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        # Build reverse map: assessment_id -> topic_id
+        assessment_to_topic = {v: k for k, v in assessment_map.items()}
+
+        # Group by topic
+        mistakes_by_topic: dict = {}
+        for ans in wrong_answers:
+            topic_id = assessment_to_topic.get(ans.assessment_id)
+            if not topic_id or topic_id not in topic_map:
+                continue
+
+            if topic_id not in mistakes_by_topic:
+                info = topic_map[topic_id]
+                mistakes_by_topic[topic_id] = {
+                    "topic_title": info["topic_title"],
+                    "topic_number": info["topic_number"],
+                    "unit_title": info["unit_title"],
+                    "unit_number": info["unit_number"],
+                    "mistakes": [],
+                }
+
+            mistakes_by_topic[topic_id]["mistakes"].append({
+                "question_text": ans.question_text,
+                "student_answer": ans.student_answer,
+                "correct_answer": ans.correct_answer,
+                "explanation": ans.explanation,
+                "question_type": ans.question_type,
+                "question_category": ans.question_category,
+                "created_at": ans.created_at.isoformat() if ans.created_at else None,
+            })
+
+        return {
+            "mistakes": mistakes_by_topic,
+            "total_mistakes": len(wrong_answers),
+        }
+    finally:
+        db.close()
+
+
 @router.post("/{course_id}/topics/{topic_id}/generate-questions")
 async def generate_additional_questions(
     course_id: str,

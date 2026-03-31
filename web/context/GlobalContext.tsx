@@ -609,7 +609,7 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
   // --- Sidebar Customization State ---
   const DEFAULT_DESCRIPTION = "✨ AP Academy";
   const DEFAULT_NAV_ORDER: SidebarNavOrder = {
-    start: ["/", "/courses", "/counseling"],
+    start: ["/", "/courses", "/progress", "/counseling"],
     learnResearch: [],
   };
 

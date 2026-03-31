@@ -596,7 +596,7 @@ export default function StudyPage({
       if (mergedFrqs.length > 0 && !mergedFrqs[0].raw_text) {
         setFrqIndex(0);
         setActiveFRQ(mergedFrqs[0]);
-        setFrqAnswer("");
+        setFrqAnswer(frqScaffold(mergedFrqs[0]));
         setShowFRQSolution(false);
         setShowGoldenSolution(false);
         return;
@@ -832,6 +832,20 @@ export default function StudyPage({
     };
   }
 
+  /** Return scaffold code for multi-part FRQ questions. */
+  function frqScaffold(frq: FRQuestion): string {
+    const q = frq.question || "";
+    const parts = q.match(/\*\*?\(?([a-d])\)?\*?\*?/gi) || [];
+    if (parts.length >= 2) {
+      const labels = [...new Set(parts.map(p => p.replace(/[*()]/g, "").trim().toLowerCase()))];
+      return (
+        "// Write all parts of your solution below\n\n" +
+        labels.map(l => `// --- Part (${l}) ---\n\n`).join("\n")
+      );
+    }
+    return "";
+  }
+
   function handleNextFRQ() {
     // Merge preloaded + extra FRQs
     const frqs = [
@@ -843,7 +857,7 @@ export default function StudyPage({
     if (nextIdx < frqs.length && !frqs[nextIdx].raw_text) {
       setFrqIndex(nextIdx);
       setActiveFRQ(frqs[nextIdx]);
-      setFrqAnswer("");
+      setFrqAnswer(frqScaffold(frqs[nextIdx]));
       setShowFRQSolution(false);
       setShowGoldenSolution(false);
       setFrqEvalResult(null);
@@ -1313,7 +1327,7 @@ export default function StudyPage({
       <div className="flex flex-1 overflow-hidden">
 
       {/* ── LEFT PANEL: FRQ Problem Statement (when FRQ is active) ── */}
-      {activeFRQ && showEditorPanel && !frqEvalResult && (() => {
+      {activeFRQ && showEditorPanel && (() => {
         const allFrqs = [...(preloadedContent?.practice_frq || []), ...(extraFrqs || [])];
         const totalFrqs = allFrqs.length;
         return (
@@ -1339,7 +1353,7 @@ export default function StudyPage({
                     if (allFrqs[i] && !allFrqs[i].raw_text) {
                       setFrqIndex(i);
                       setActiveFRQ(allFrqs[i]);
-                      setFrqAnswer("");
+                      setFrqAnswer(frqScaffold(allFrqs[i]));
                       setShowFRQSolution(false);
                       setShowGoldenSolution(false);
                       setFrqEvalResult(null);
@@ -1444,7 +1458,7 @@ export default function StudyPage({
       })()}
 
       {/* Messages column (hidden when FRQ problem view is active) */}
-      {!(activeFRQ && showEditorPanel && !frqEvalResult) && (
+      {!(activeFRQ && showEditorPanel) && (
       <div className={`flex flex-col min-w-0 ${showEditorPanel ? "w-1/2" : "flex-1"}`}>
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
@@ -2304,9 +2318,10 @@ export default function StudyPage({
                   {frqIndex > 0 && (
                     <button
                       onClick={() => {
+                        const prev = allFrqs[frqIndex - 1];
                         setFrqIndex(frqIndex - 1);
-                        setActiveFRQ(allFrqs[frqIndex - 1]);
-                        setFrqAnswer("");
+                        setActiveFRQ(prev);
+                        setFrqAnswer(frqScaffold(prev));
                         setShowFRQSolution(false);
                         setShowGoldenSolution(false);
                         setFrqEvalResult(null);
