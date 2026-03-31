@@ -251,10 +251,11 @@ export default function CourseDetailPage({
   }
 
   const totalTopics = course.units.reduce((sum, u) => sum + u.topic_count, 0);
+  const isCustomCourse = course.code?.startsWith("CUSTOM_") || course.exam_format?.is_custom;
   const totalExamMinutes = course.exam_format?.sections.reduce(
-    (sum, s) => sum + s.minutes,
+    (sum, s) => sum + (s.minutes || s.time_minutes || 0),
     0,
-  );
+  ) || 0;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
@@ -297,7 +298,7 @@ export default function CourseDetailPage({
             <strong>{totalTopics}</strong> {t("topics")}
           </span>
         </div>
-        {totalExamMinutes && (
+        {totalExamMinutes > 0 && !isCustomCourse && (
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-amber-500" />
             <span className="text-sm text-slate-600 dark:text-slate-300">
@@ -376,8 +377,8 @@ export default function CourseDetailPage({
         );
       })()}
 
-      {/* Exam Format */}
-      {course.exam_format && (
+      {/* Exam Format — hide for custom courses */}
+      {course.exam_format && !isCustomCourse && (
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-blue-500" />
