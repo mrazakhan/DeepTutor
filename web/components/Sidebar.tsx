@@ -203,7 +203,7 @@ export default function Sidebar() {
                 <ChevronsLeft className="w-4 h-4" />
               </button>
               <a
-                href="https://hkuds.github.io/DeepTutor/"
+                href="https://github.com/mrazakhan/DeepTutor"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
@@ -212,7 +212,7 @@ export default function Sidebar() {
                 <Globe className="w-4 h-4" />
               </a>
               <a
-                href="https://github.com/HKUDS/DeepTutor"
+                href="https://github.com/mrazakhan/DeepTutor/tree/deeptutor%2B%2B"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
