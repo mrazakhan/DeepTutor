@@ -409,6 +409,104 @@ async def get_course_mistakes(course_id: str, request: Request, limit: int = 100
         db.close()
 
 
+@router.delete("/{course_id}/topics/{topic_id}/progress")
+async def reset_topic_progress(course_id: str, topic_id: str, request: Request):
+    """Reset progress for a single topic (deletes assessment, answers, dimensions)."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        if not topic or topic.unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        # Delete proficiency dimensions
+        db.query(ProficiencyDimension).filter(
+            ProficiencyDimension.user_id == user_id,
+            ProficiencyDimension.topic_id == topic_id,
+        ).delete()
+
+        # Delete assessment (cascades to answers)
+        db.query(TopicAssessment).filter(
+            TopicAssessment.user_id == user_id,
+            TopicAssessment.topic_id == topic_id,
+        ).delete()
+
+        db.commit()
+        return {"success": True, "reset": "topic", "topic_id": topic_id}
+    finally:
+        db.close()
+
+
+@router.delete("/{course_id}/units/{unit_id}/progress")
+async def reset_unit_progress(course_id: str, unit_id: str, request: Request):
+    """Reset progress for all topics in a unit."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        unit = db.query(Unit).filter(Unit.id == unit_id).first()
+        if not unit or unit.course_id != course_id:
+            raise HTTPException(status_code=404, detail="Unit not found")
+
+        topic_ids = [t.id for t in unit.topics]
+        if not topic_ids:
+            return {"success": True, "reset": "unit", "topics_reset": 0}
+
+        db.query(ProficiencyDimension).filter(
+            ProficiencyDimension.user_id == user_id,
+            ProficiencyDimension.topic_id.in_(topic_ids),
+        ).delete(synchronize_session=False)
+
+        db.query(TopicAssessment).filter(
+            TopicAssessment.user_id == user_id,
+            TopicAssessment.topic_id.in_(topic_ids),
+        ).delete(synchronize_session=False)
+
+        db.commit()
+        return {"success": True, "reset": "unit", "topics_reset": len(topic_ids)}
+    finally:
+        db.close()
+
+
+@router.delete("/{course_id}/progress")
+async def reset_course_progress(course_id: str, request: Request):
+    """Reset progress for all topics in a course."""
+    user = _get_user_from_request(request)
+    user_id = user["user_id"]
+
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        topic_ids = []
+        for unit in course.units:
+            for topic in unit.topics:
+                topic_ids.append(topic.id)
+
+        if not topic_ids:
+            return {"success": True, "reset": "course", "topics_reset": 0}
+
+        db.query(ProficiencyDimension).filter(
+            ProficiencyDimension.user_id == user_id,
+            ProficiencyDimension.topic_id.in_(topic_ids),
+        ).delete(synchronize_session=False)
+
+        db.query(TopicAssessment).filter(
+            TopicAssessment.user_id == user_id,
+            TopicAssessment.topic_id.in_(topic_ids),
+        ).delete(synchronize_session=False)
+
+        db.commit()
+        return {"success": True, "reset": "course", "topics_reset": len(topic_ids)}
+    finally:
+        db.close()
+
+
 @router.post("/{course_id}/topics/{topic_id}/generate-questions")
 async def generate_additional_questions(
     course_id: str,

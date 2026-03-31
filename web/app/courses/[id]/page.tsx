@@ -15,6 +15,7 @@ import {
   GraduationCap,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -125,6 +126,29 @@ export default function CourseDetailPage({
       }
     } catch (err) {
       console.error("Failed to fetch progress:", err);
+    }
+  }
+
+  async function resetProgress(level: "topic" | "unit" | "course", entityId: string, e?: React.MouseEvent) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const labels = { topic: "topic", unit: "unit", course: "course" };
+    if (!confirm(`Reset all progress for this ${labels[level]}? This will delete all MCQ/FRQ scores and cannot be undone.`)) return;
+
+    const token = localStorage.getItem("deeptutor_token");
+    const headers = { Authorization: `Bearer ${token}` };
+    let url = "";
+    if (level === "topic") url = `/api/v1/courses/${id}/topics/${entityId}/progress`;
+    else if (level === "unit") url = `/api/v1/courses/${id}/units/${entityId}/progress`;
+    else url = `/api/v1/courses/${id}/progress`;
+
+    try {
+      const res = await fetch(apiUrl(url), { method: "DELETE", headers });
+      if (res.ok) {
+        await fetchProgress();
+        await fetchCourseDimensions();
+      }
+    } catch (err) {
+      console.error("Failed to reset progress:", err);
     }
   }
 
@@ -464,6 +488,19 @@ export default function CourseDetailPage({
             >
               {t("Collapse all")}
             </button>
+            {Object.values(topicProgress).some(p => p.total_questions > 0) && (
+              <>
+                <span className="text-slate-300">|</span>
+                <button
+                  onClick={(e) => resetProgress("course", id as string, e)}
+                  className="text-red-400 hover:text-red-500 transition-colors inline-flex items-center gap-1"
+                  title="Reset all progress for this course"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  {t("Reset All")}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -514,6 +551,20 @@ export default function CourseDetailPage({
                       })()}
                     </div>
                   </div>
+                  {/* Unit reset button - only show if unit has progress */}
+                  {(() => {
+                    const unitAssessed = unit.topics.filter(t => topicProgress[t.id]?.total_questions > 0);
+                    if (unitAssessed.length === 0) return null;
+                    return (
+                      <button
+                        onClick={(e) => resetProgress("unit", unit.id, e)}
+                        title="Reset progress for this unit"
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                    );
+                  })()}
                   {isExpanded ? (
                     <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
                   ) : (
@@ -548,6 +599,13 @@ export default function CourseDetailPage({
                             className="flex items-center gap-1.5 flex-shrink-0"
                             title={`${topicProgress[topic.id].correct_answers}/${topicProgress[topic.id].total_questions} correct`}
                           >
+                            <button
+                              onClick={(e) => resetProgress("topic", topic.id, e)}
+                              title="Reset progress for this topic"
+                              className="w-5 h-5 rounded flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
                             <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${
