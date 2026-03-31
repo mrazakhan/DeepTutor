@@ -535,6 +535,10 @@
   "Key Points": "Key Points",
   "After generation, 3-5 key points will be listed here.": "After generation, 3-5 key points will be listed here.",
   "Podcast Audio": "Podcast Audio",
+
+  "Counseling": "Counseling",
+  "CS Admissions Counseling": "CS Admissions Counseling",
+  "Strategic roadmap for top CS program admissions": "Strategic roadmap for top CS program admissions",
   "Your browser does not support the audio element.": "Your browser does not support the audio element.",
   "TTS not configured, script generation only.": "TTS not configured, script generation only.",
   "After generation, you can play the podcast audio here.": "After generation, you can play the podcast audio here."

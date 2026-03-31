@@ -15,6 +15,7 @@ import {
   Check,
   X,
   Library,
+  GraduationCap,
   Shield,
   KeyRound,
   Loader2,
@@ -38,6 +39,7 @@ interface NavItem {
 const ALL_NAV_ITEMS: Record<string, { icon: LucideIcon; nameKey: string }> = {
   "/": { icon: Home, nameKey: "Home" },
   "/courses": { icon: Library, nameKey: "AP Courses" },
+  "/counseling": { icon: GraduationCap, nameKey: "Counseling" },
 };
 
 export default function Sidebar() {
@@ -165,7 +167,7 @@ export default function Sidebar() {
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                 <Image
-                  src="/logo.png"
+                  src="/logo.svg"
                   alt={t("DeepTutor Logo")}
                   width={32}
                   height={32}
