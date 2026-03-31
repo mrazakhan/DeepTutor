@@ -2428,7 +2428,8 @@ export default function StudyPage({
           </button>
         </form>
       </div>
-      </div>{/* end messages column */}
+      </div>
+      </div>
       )}
 
       {/* Right-side Code Editor Panel */}
