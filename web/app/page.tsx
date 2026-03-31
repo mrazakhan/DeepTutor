@@ -263,7 +263,7 @@ export default function HomePage() {
             {t("Welcome to DeepTutor++")}
           </h1>
           <p className="text-lg text-slate-500 dark:text-slate-400">
-            {t("Track your AP course progress")}
+            {t("Personal tutor for the high schoolers")}
           </p>
         </div>
 
