@@ -39,8 +39,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mx-auto mb-4">
-            <Image src="/logo.svg" alt="DeepTutor Logo" width={40} height={40} className="object-contain" priority />
+          <div className="w-28 h-24 flex items-center justify-center mx-auto mb-4">
+            <Image src="/logo.svg" alt="DeepTutor Logo" width={112} height={96} className="object-contain" priority />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             DeepTutor++
