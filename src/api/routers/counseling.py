@@ -440,6 +440,23 @@ def _build_counseling_system_prompt(display_name: str, roadmap_text: str, resume
 {resume_text}
 """
 
+    if resume_text:
+        opening_instructions = """
+IMPORTANT: The student has uploaded their resume/profile. You already know their background.
+In your FIRST message:
+- Acknowledge that you've reviewed their profile
+- Immediately give 2-3 specific observations (strengths AND gaps) based on their resume
+- Reference specific items from their resume (courses, competitions, projects, scores)
+- Ask 1-2 targeted follow-up questions based on what you see in their profile
+Do NOT ask generic questions like "what grade are you in?" — you already know from their resume."""
+    else:
+        opening_instructions = """
+The student has NOT uploaded a resume, so you don't know their background yet.
+Start by introducing yourself briefly and asking:
+1. What grade they're in
+2. What their main activities/coursework are so far
+Keep your initial message SHORT (3-4 sentences max)."""
+
     return f"""You are an expert college admissions counselor specializing in {display_name} programs at top universities. You are having an interactive conversation with a high school student who wants to get into a top {display_name} program.
 
 You have access to a detailed 4-year roadmap for students targeting top {display_name} programs.
@@ -450,22 +467,13 @@ You have access to a detailed 4-year roadmap for students targeting top {display
 
 === YOUR APPROACH ===
 1. Be conversational, warm, and encouraging — but honest about gaps.
-2. Ask clarifying questions to understand the student's situation better. Key things to ask about:
-   - What grade are they in currently?
-   - What AP courses have they taken or are planning to take?
-   - What competitions have they participated in?
-   - What extracurricular activities are they involved in?
-   - What are their test scores (SAT/ACT, AP scores)?
-   - What research or projects have they done?
-   - What are their target schools?
-3. Based on their answers, give specific, actionable advice referencing the roadmap.
-4. Proactively suggest what they should be doing NOW based on their grade level.
-5. Help them understand how they compare to competitive applicants.
-6. If they have a resume uploaded, reference specific items from it.
-7. Don't dump everything at once — have a natural conversation, asking 2-3 questions at a time.
-8. Focus on improving their chances of admission — be practical, not just aspirational.
-
-Start by introducing yourself briefly and asking what grade they're in and what their main interests/activities are so far. Keep your initial message SHORT (3-4 sentences max)."""
+2. Based on what you know, give specific, actionable advice referencing the roadmap.
+3. Proactively suggest what they should be doing NOW based on their grade level.
+4. Help them understand how they compare to competitive applicants.
+5. Ask follow-up questions to clarify details — but only 1-2 at a time, naturally woven into your advice.
+6. Focus on improving their chances of admission — be practical, not just aspirational.
+7. Don't dump everything at once — have a natural back-and-forth conversation.
+{opening_instructions}"""
 
 
 @router.websocket("/chat")
