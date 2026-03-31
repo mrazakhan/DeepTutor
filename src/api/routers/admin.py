@@ -386,6 +386,76 @@ async def daily_usage(request: Request, days: int = 30):
         db.close()
 
 
+# ── Custom course management ──────────────────────────────────────────
+
+
+@router.get("/courses/pending")
+async def list_pending_courses(request: Request):
+    """List custom courses awaiting admin approval."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        courses = (
+            db.query(Course)
+            .filter(Course.is_approved == False, Course.is_active == True)
+            .order_by(Course.created_at.desc())
+            .all()
+        )
+        result = []
+        for c in courses:
+            creator = db.query(User).filter(User.id == c.created_by).first() if c.created_by else None
+            result.append({
+                "id": c.id,
+                "code": c.code,
+                "name": c.name,
+                "subject_area": c.subject_area,
+                "description": c.description,
+                "unit_count": len(c.units),
+                "topic_count": sum(len(u.topics) for u in c.units),
+                "created_by": {
+                    "id": creator.id,
+                    "username": creator.username,
+                    "display_name": creator.display_name,
+                } if creator else None,
+                "created_at": str(c.created_at) if c.created_at else None,
+            })
+        return result
+    finally:
+        db.close()
+
+
+@router.patch("/courses/{course_id}/approve")
+async def approve_course(course_id: str, request: Request):
+    """Approve a custom course, making it visible to all users."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+        course.is_approved = True
+        db.commit()
+        return {"course_id": course_id, "name": course.name, "is_approved": True}
+    finally:
+        db.close()
+
+
+@router.patch("/courses/{course_id}/reject")
+async def reject_course(course_id: str, request: Request):
+    """Reject (deactivate) a custom course."""
+    _require_admin(request)
+    db = get_db()
+    try:
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+        course.is_active = False
+        db.commit()
+        return {"course_id": course_id, "name": course.name, "is_active": False}
+    finally:
+        db.close()
+
+
 # ── Batch generation helpers ──────────────────────────────────────────
 
 

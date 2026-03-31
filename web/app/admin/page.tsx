@@ -16,6 +16,10 @@ import {
   ToggleRight,
   Zap,
   TrendingUp,
+  BookOpen,
+  CheckCircle,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -64,7 +68,30 @@ interface DailyRow {
   exams: number;
 }
 
-type Tab = "users" | "sessions" | "overview" | "usage";
+interface PendingCourse {
+  id: string;
+  name: string;
+  code: string;
+  subject_area: string;
+  description: string;
+  unit_count: number;
+  topic_count: number;
+  created_by_username: string;
+  created_at: string;
+}
+
+interface CourseRow {
+  id: string;
+  name: string;
+  code: string;
+  subject_area: string;
+  unit_count: number;
+  topic_count: number;
+  status: string;
+  is_custom: boolean;
+}
+
+type Tab = "users" | "sessions" | "overview" | "usage" | "courses";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -99,6 +126,10 @@ export default function AdminPage() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [pendingCourses, setPendingCourses] = useState<PendingCourse[]>([]);
+  const [allCourses, setAllCourses] = useState<CourseRow[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [coursesLoaded, setCoursesLoaded] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== "admin") router.push("/");
@@ -186,6 +217,53 @@ export default function AdminPage() {
     }
   }
 
+  const loadCourses = useCallback(async () => {
+    setCoursesLoading(true);
+    try {
+      const [pendingRes, allRes] = await Promise.all([
+        fetch(apiUrl("/api/v1/admin/courses/pending"), { headers: headers() }),
+        fetch(apiUrl("/api/v1/courses/list"), { headers: headers() }),
+      ]);
+      if (pendingRes.ok) setPendingCourses(await pendingRes.json());
+      if (allRes.ok) setAllCourses(await allRes.json());
+      setCoursesLoaded(true);
+    } catch (err) {
+      console.error("Failed to load courses:", err);
+    } finally {
+      setCoursesLoading(false);
+    }
+  }, [headers]);
+
+  useEffect(() => {
+    if (tab === "courses" && user?.role === "admin" && !coursesLoaded) {
+      loadCourses();
+    }
+  }, [tab, user, coursesLoaded, loadCourses]);
+
+  async function handleApproveCourse(courseId: string) {
+    try {
+      const res = await fetch(
+        apiUrl(`/api/v1/admin/courses/${courseId}/approve`),
+        { method: "PATCH", headers: headers() }
+      );
+      if (res.ok) loadCourses();
+    } catch {
+      /* skip */
+    }
+  }
+
+  async function handleRejectCourse(courseId: string) {
+    try {
+      const res = await fetch(
+        apiUrl(`/api/v1/admin/courses/${courseId}/reject`),
+        { method: "PATCH", headers: headers() }
+      );
+      if (res.ok) loadCourses();
+    } catch {
+      /* skip */
+    }
+  }
+
   function copyPassword() {
     if (resetResult) {
       navigator.clipboard.writeText(resetResult.password);
@@ -207,6 +285,7 @@ export default function AdminPage() {
     { id: "usage", label: "Usage", icon: TrendingUp },
     { id: "sessions", label: "Sessions", icon: Activity },
     { id: "overview", label: "Overview", icon: BarChart3 },
+    { id: "courses", label: "Courses", icon: BookOpen },
   ];
 
   // Daily chart helpers
@@ -723,6 +802,170 @@ export default function AdminPage() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ═══════════ Courses Tab ═══════════ */}
+          {tab === "courses" && (
+            <div>
+              {coursesLoading ? (
+                <div className="text-center py-20 text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  Loading courses...
+                </div>
+              ) : (
+                <>
+                  {/* Pending Approval Section */}
+                  <div className="mb-8">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-amber-500" />
+                      Pending Approval
+                    </h3>
+                    {pendingCourses.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                        No courses pending approval
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {pendingCourses.map((course) => (
+                          <div
+                            key={course.id}
+                            className="p-5 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <h4 className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {course.name}
+                                </h4>
+                                {course.code && (
+                                  <span className="text-xs text-slate-400">
+                                    {course.code}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                                {course.subject_area}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-3 line-clamp-2">
+                              {course.description || "No description"}
+                            </p>
+                            <div className="flex items-center gap-3 text-xs text-slate-400 mb-4">
+                              <span>{course.unit_count} units</span>
+                              <span>·</span>
+                              <span>{course.topic_count} topics</span>
+                              <span>·</span>
+                              <span>by @{course.created_by_username}</span>
+                              <span>·</span>
+                              <span>{formatDate(course.created_at)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleApproveCourse(course.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectCourse(course.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                              >
+                                <XCircle className="w-4 h-4" />
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* All Courses Section */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-blue-500" />
+                      All Courses
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
+                            <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                              Course
+                            </th>
+                            <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                              Subject Area
+                            </th>
+                            <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                              Units
+                            </th>
+                            <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400 text-right">
+                              Topics
+                            </th>
+                            <th className="pb-3 font-semibold text-slate-500 dark:text-slate-400">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allCourses.map((course) => (
+                            <tr
+                              key={course.id}
+                              className="border-b border-slate-100 dark:border-slate-800"
+                            >
+                              <td className="py-3">
+                                <div className="font-medium text-slate-900 dark:text-slate-100">
+                                  {course.name}
+                                </div>
+                                {course.code && (
+                                  <div className="text-xs text-slate-400">
+                                    {course.code}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 text-slate-500 dark:text-slate-400">
+                                {course.subject_area}
+                              </td>
+                              <td className="py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                                {course.unit_count}
+                              </td>
+                              <td className="py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                                {course.topic_count}
+                              </td>
+                              <td className="py-3">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                      course.status === "approved"
+                                        ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                                        : course.status === "pending"
+                                          ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+                                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                                    }`}
+                                  >
+                                    {course.status}
+                                  </span>
+                                  {course.is_custom && (
+                                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                                      Custom
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {allCourses.length === 0 && (
+                        <div className="text-center py-12 text-slate-400">
+                          No courses found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </>

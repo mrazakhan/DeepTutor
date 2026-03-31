@@ -158,6 +158,10 @@ app = FastAPI(
     title="DeepTutor API",
     version="1.0.0",
     lifespan=lifespan,
+    # Disable Swagger docs in production (security: don't expose API spec)
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     # Disable automatic trailing slash redirects to prevent protocol downgrade issues
     # when deployed behind HTTPS reverse proxies (e.g., nginx).
     # Without this, FastAPI's 307 redirects may change HTTPS to HTTP.

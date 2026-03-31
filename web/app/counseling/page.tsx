@@ -341,16 +341,7 @@ export default function CounselingPage() {
       let assistantContent = "";
 
       ws.onopen = () => {
-        const token = localStorage.getItem("deeptutor_token");
-        // Parse user_id from token if available
-        let userId: string | null = null;
-        try {
-          const stored = localStorage.getItem("deeptutor_user");
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            userId = parsed.id || parsed.user_id || null;
-          }
-        } catch {}
+        const token = localStorage.getItem("deeptutor_token") || "";
 
         // Build history from existing messages (exclude current)
         const history = chatMessages
@@ -359,10 +350,10 @@ export default function CounselingPage() {
 
         ws.send(
           JSON.stringify({
+            token,
             message,
             stem_area: selectedArea,
             history: isInit ? [] : history,
-            user_id: userId,
           })
         );
       };

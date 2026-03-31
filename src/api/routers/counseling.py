@@ -476,13 +476,31 @@ You have access to a detailed 4-year roadmap for students targeting top {display
 {opening_instructions}"""
 
 
+_MAX_MESSAGE_LENGTH = 5000  # Max chars per chat message
+
+
+def _validate_ws_token(token: str) -> dict | None:
+    """Validate a Bearer token and return user info, or None."""
+    from src.api.routers.auth import _tokens
+    import time
+    if not token:
+        return None
+    session = _tokens.get(token)
+    if session and session.get("expires", 0) >= time.time():
+        return session
+    return None
+
+
 @router.websocket("/chat")
 async def websocket_counseling_chat(websocket: WebSocket):
     """
     WebSocket endpoint for interactive counseling chat.
 
+    First message MUST include "token" for authentication.
+
     Request format:
     {
+        "token": str,          # Auth token (required on first message)
         "message": str,
         "stem_area": str,
         "history": [...] | null
@@ -495,16 +513,38 @@ async def websocket_counseling_chat(websocket: WebSocket):
     """
     await websocket.accept()
 
+    authenticated_user_id = None  # Set after first authenticated message
+
     try:
         while True:
             data = await websocket.receive_json()
             message = data.get("message", "").strip()
             stem_area = data.get("stem_area", "cs")
             history = data.get("history") or []
-            user_id = data.get("user_id")
+            token = data.get("token", "")
+
+            # Authenticate on first message (or re-auth if token provided)
+            if token:
+                user_session = _validate_ws_token(token)
+                if user_session:
+                    authenticated_user_id = user_session.get("user_id")
+                else:
+                    await websocket.send_json({"type": "error", "message": "Invalid or expired token"})
+                    continue
+
+            if not authenticated_user_id:
+                await websocket.send_json({"type": "error", "message": "Authentication required. Send a valid token."})
+                continue
+
+            user_id = authenticated_user_id  # Use server-validated user_id, not client-sent
 
             if not message:
                 await websocket.send_json({"type": "error", "message": "Message is required"})
+                continue
+
+            # Enforce message length limit
+            if len(message) > _MAX_MESSAGE_LENGTH:
+                await websocket.send_json({"type": "error", "message": f"Message too long. Maximum {_MAX_MESSAGE_LENGTH} characters."})
                 continue
 
             try:
