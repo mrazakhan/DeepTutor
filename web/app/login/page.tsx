@@ -16,7 +16,7 @@ export default function LoginPage() {
 
   // Redirect if already logged in
   if (user) {
-    router.push("/courses");
+    router.push("/");
     return null;
   }
 
@@ -26,7 +26,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      router.push("/courses");
+      router.push("/");
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {

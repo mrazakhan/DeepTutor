@@ -345,7 +345,7 @@ export default function HomePage() {
       ));
   }
 
-  // ---- Timeline / Learning Path View ----
+  // ---- Timeline / Learning Path View (horizontal) ----
   function renderTimeline() {
     const groups: Record<string, { label: string; icon: typeof Code; courses: CourseListItem[] }> = {
       computer_science: { label: "Computer Science Path", icon: Code, courses: [] },
@@ -357,17 +357,17 @@ export default function HomePage() {
       const area = c.code.startsWith("CUSTOM_") ? "custom" : (c.subject_area || "custom");
       (groups[area] || groups.custom).courses.push(c);
     }
-    const lineColors: Record<string, string> = {
+    const lineGradients: Record<string, string> = {
       computer_science: "from-violet-400 to-violet-600",
       math: "from-blue-400 to-blue-600",
       science: "from-emerald-400 to-emerald-600",
       custom: "from-amber-400 to-amber-600",
     };
     const dotColors: Record<string, string> = {
-      computer_science: "bg-violet-500",
-      math: "bg-blue-500",
-      science: "bg-emerald-500",
-      custom: "bg-amber-500",
+      computer_science: "bg-violet-500 border-violet-300",
+      math: "bg-blue-500 border-blue-300",
+      science: "bg-emerald-500 border-emerald-300",
+      custom: "bg-amber-500 border-amber-300",
     };
 
     return Object.entries(groups)
@@ -376,8 +376,9 @@ export default function HomePage() {
         const GroupIcon = g.icon;
         const color = SUBJECT_COLOR[key] || SUBJECT_COLOR.custom;
         return (
-          <div key={key} className="mb-8">
-            <div className="flex items-center gap-2 mb-4">
+          <div key={key} className="mb-10">
+            {/* Path label */}
+            <div className="flex items-center gap-2 mb-6">
               <div className={`p-1.5 rounded-lg ${color.bg}`}>
                 <GroupIcon className={`w-4 h-4 ${color.text}`} />
               </div>
@@ -385,14 +386,17 @@ export default function HomePage() {
                 {g.label}
               </h3>
             </div>
-            <div className="relative ml-4">
-              {/* Vertical line */}
-              <div className={`absolute left-[11px] top-3 bottom-3 w-0.5 bg-gradient-to-b ${lineColors[key] || "from-blue-400 to-blue-600"} opacity-30`} />
-              <div className="space-y-3">
+
+            {/* Horizontal track */}
+            <div className="relative">
+              {/* Horizontal connecting line */}
+              <div className={`absolute top-[22px] left-8 right-8 h-0.5 bg-gradient-to-r ${lineGradients[key] || "from-blue-400 to-blue-600"} opacity-30`} />
+
+              <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
                 {g.courses.map((course, idx) => {
                   const stats = getCourseStats(course.id);
                   const pct = stats.assessed > 0 ? stats.proficiency : 0;
-                  const dot = dotColors[key] || "bg-blue-500";
+                  const dot = dotColors[key] || "bg-blue-500 border-blue-300";
                   const isComplete = pct >= 80;
                   const isStarted = stats.assessed > 0;
 
@@ -400,48 +404,37 @@ export default function HomePage() {
                     <Link
                       key={course.id}
                       href={`/courses/${course.id}`}
-                      className="flex items-start gap-4 group relative"
+                      className="flex flex-col items-center group flex-shrink-0 w-40"
                     >
-                      {/* Timeline dot */}
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 z-10 shadow-sm border-2 ${
+                      {/* Node dot */}
+                      <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 z-10 shadow-md border-2 mb-3 transition-transform group-hover:scale-110 ${
                         isComplete
-                          ? `${dot} border-white dark:border-slate-900`
+                          ? `${dot}`
                           : isStarted
-                          ? `bg-white dark:bg-slate-800 border-current ${color.text}`
+                          ? `bg-white dark:bg-slate-800 ${color.border || "border-slate-300"}`
                           : "bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
                       }`}>
-                        {isComplete && <TrendingUp className="w-3 h-3 text-white" />}
-                        {isStarted && !isComplete && <span className="text-[8px] font-bold">{pct}%</span>}
-                        {!isStarted && <span className="text-[8px] text-slate-400">{idx + 1}</span>}
+                        {isComplete && <TrendingUp className="w-4 h-4 text-white" />}
+                        {isStarted && !isComplete && <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">{pct}%</span>}
+                        {!isStarted && <span className="text-xs text-slate-400 font-medium">{idx + 1}</span>}
                       </div>
 
-                      {/* Course info */}
-                      <div className="flex-1 pb-3 group-hover:translate-x-1 transition-transform">
-                        <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 group-hover:shadow-md group-hover:border-blue-300 dark:group-hover:border-blue-600 transition-all">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-sm text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                              {course.name}
-                            </h4>
-                            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                      {/* Course card below node */}
+                      <div className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 group-hover:shadow-md group-hover:border-blue-300 dark:group-hover:border-blue-600 transition-all text-center">
+                        <h4 className="font-medium text-xs text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-tight mb-1.5">
+                          {course.name}
+                        </h4>
+                        <span className="text-[10px] text-slate-400">{course.topic_count} topics</span>
+                        {isStarted && (
+                          <div className="mt-1.5">
+                            <div className="w-full h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-blue-500"}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="flex items-center gap-3 mt-1.5">
-                            <span className="text-[10px] text-slate-400">{course.unit_count} units · {course.topic_count} topics</span>
-                            {isStarted && (
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-16 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-blue-500"}`}
-                                    style={{ width: `${pct}%` }}
-                                  />
-                                </div>
-                                <span className="text-[10px] font-semibold text-slate-500">{pct}%</span>
-                              </div>
-                            )}
-                            {stats.mastered > 0 && (
-                              <span className="text-[10px] text-emerald-500 font-medium">{stats.mastered} mastered</span>
-                            )}
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </Link>
                   );
