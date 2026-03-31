@@ -251,7 +251,7 @@ export default function CourseDetailPage({
   }
 
   const totalTopics = course.units.reduce((sum, u) => sum + u.topic_count, 0);
-  const isCustomCourse = course.code?.startsWith("CUSTOM_") || course.exam_format?.is_custom;
+  const isCustomCourse = course.code?.startsWith("CUSTOM_") || (course.exam_format as Record<string, unknown>)?.is_custom;
   const totalExamMinutes = course.exam_format?.sections.reduce(
     (sum, s) => sum + (s.minutes || s.time_minutes || 0),
     0,
