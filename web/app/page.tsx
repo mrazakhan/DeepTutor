@@ -411,7 +411,7 @@ export default function HomePage() {
                         isComplete
                           ? `${dot}`
                           : isStarted
-                          ? `bg-white dark:bg-slate-800 ${color.border || "border-slate-300"}`
+                          ? `bg-white dark:bg-slate-800 border-slate-300`
                           : "bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
                       }`}>
                         {isComplete && <TrendingUp className="w-4 h-4 text-white" />}
