@@ -2429,7 +2429,6 @@ export default function StudyPage({
         </form>
       </div>
       </div>
-      </div>
       )}
 
       {/* Right-side Code Editor Panel */}
