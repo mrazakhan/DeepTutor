@@ -969,6 +969,25 @@ export default function StudyPage({
         );
       };
 
+      // Throttle stream updates to avoid excessive re-renders with ReactMarkdown/KaTeX
+      let streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
+      let pendingFlush = false;
+
+      const flushStream = () => {
+        pendingFlush = false;
+        streamFlushTimer = null;
+        setMessages((prev) => {
+          const msgs = [...prev];
+          const last = msgs[msgs.length - 1];
+          if (last?.role === "assistant" && last?.isStreaming) {
+            msgs[msgs.length - 1] = { ...last, content: assistantMessage };
+          } else {
+            msgs.push({ role: "assistant", content: assistantMessage, isStreaming: true });
+          }
+          return msgs;
+        });
+      };
+
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
@@ -979,18 +998,15 @@ export default function StudyPage({
           setCurrentStage(data.stage || data.message);
         } else if (data.type === "stream") {
           assistantMessage += data.content;
-          setMessages((prev) => {
-            const msgs = [...prev];
-            const last = msgs[msgs.length - 1];
-            if (last?.role === "assistant" && last?.isStreaming) {
-              msgs[msgs.length - 1] = { ...last, content: assistantMessage };
-            } else {
-              msgs.push({ role: "assistant", content: assistantMessage, isStreaming: true });
-            }
-            return msgs;
-          });
           setCurrentStage("generating");
+          // Throttle: flush at most every 80ms
+          if (!pendingFlush) {
+            pendingFlush = true;
+            streamFlushTimer = setTimeout(flushStream, 80);
+          }
         } else if (data.type === "result") {
+          // Cancel pending throttle and flush final content
+          if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null; }
           setMessages((prev) => {
             const msgs = [...prev];
             const last = msgs[msgs.length - 1];
