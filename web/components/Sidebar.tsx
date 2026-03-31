@@ -282,6 +282,7 @@ export default function Sidebar() {
               <div key={item.href} className="group relative">
                 <Link
                   href={item.href}
+                  title={sidebarCollapsed ? item.name : undefined}
                   className={`flex items-center rounded-md border transition-all duration-200 ${
                     sidebarCollapsed
                       ? "justify-center p-2"
