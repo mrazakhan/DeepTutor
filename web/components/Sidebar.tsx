@@ -300,7 +300,7 @@ export default function Sidebar() {
                     className={`w-5 h-5 flex-shrink-0 transition-colors ${
                       isActive
                         ? (ALL_NAV_ITEMS[item.href]?.color || "text-blue-500 dark:text-blue-400")
-                        : "text-slate-400 dark:text-slate-500 group-hover:text-blue-500 dark:group-hover:text-blue-400"
+                        : (ALL_NAV_ITEMS[item.href]?.color || "text-slate-400 dark:text-slate-500") + " opacity-60 group-hover:opacity-100"
                     }`}
                   />
                   <span
