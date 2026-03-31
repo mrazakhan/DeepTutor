@@ -19,6 +19,7 @@ import {
   Shield,
   KeyRound,
   Loader2,
+  BarChart3,
   LucideIcon,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
@@ -39,6 +40,7 @@ interface NavItem {
 const ALL_NAV_ITEMS: Record<string, { icon: LucideIcon; nameKey: string }> = {
   "/": { icon: Home, nameKey: "Home" },
   "/courses": { icon: Library, nameKey: "AP Courses" },
+  "/progress": { icon: BarChart3, nameKey: "Progress" },
   "/counseling": { icon: GraduationCap, nameKey: "Counseling" },
 };
 
