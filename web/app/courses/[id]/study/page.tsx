@@ -1133,7 +1133,9 @@ export default function StudyPage({
     : "";
 
   // Whether to show the right-side code editor panel (also show during evaluation)
-  const showEditorPanel = !!(activeFRQ && !showFRQSolution) || (showInlineEditor && !isLoading) || frqEvalResult !== null;
+  const showEditorPanel = !!(activeFRQ) || (showInlineEditor && !isLoading) || frqEvalResult !== null;
+  // Opaque boolean — prevents TypeScript from narrowing activeFRQ to never inside messages column
+  const showMessagesColumn: boolean = !(activeFRQ && showEditorPanel);
 
   // Parse evaluation result into structured sections
   const evalSections = (() => {
@@ -1399,18 +1401,6 @@ export default function StudyPage({
               </ReactMarkdown>
             </div>
 
-            {/* Solution (shown after View Solution) */}
-            {showFRQSolution && (
-              <div className="mt-6 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                <h4 className="text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-2">Sample Solution</h4>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {`\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n${activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : ""}**Explanation:**\n${activeFRQ.explanation}`}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            )}
-
             {/* Golden solution */}
             {goldenSolutions?.find(g => g.frq_index === frqIndex) && (
               <div className="mt-3">
@@ -1475,7 +1465,7 @@ export default function StudyPage({
       })()}
 
       {/* Messages column (hidden when FRQ problem view is active) */}
-      {!(activeFRQ && showEditorPanel) && (
+      {showMessagesColumn && (
       <div className={`flex flex-col min-w-0 ${showEditorPanel ? "w-1/2" : "flex-1"}`}>
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
@@ -2217,7 +2207,10 @@ export default function StudyPage({
         )}
 
         {/* FRQ question — single-card view with navigation */}
-        {activeFRQ && (() => {
+        {(() => {
+          // Use local `frq` to bypass outer TypeScript narrowing of activeFRQ
+          const frq = activeFRQ;
+          if (!frq) return null;
           const allFrqs = [...(preloadedContent?.practice_frq || []), ...(extraFrqs || [])];
           const totalFrqs = allFrqs.length;
           const hasNext = frqIndex < totalFrqs - 1;
@@ -2233,9 +2226,9 @@ export default function StudyPage({
                   <span className="text-xs font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 rounded-full shadow-sm">
                     FRQ {frqIndex + 1} / {totalFrqs || 1}
                   </span>
-                  {activeFRQ.frq_type && (
+                  {frq.frq_type && (
                     <span className="text-[10px] font-medium text-purple-500 bg-purple-50 dark:bg-purple-900/30 px-2 py-0.5 rounded-full">
-                      {activeFRQ.frq_type}
+                      {frq.frq_type}
                     </span>
                   )}
                 </div>
@@ -2278,7 +2271,7 @@ export default function StudyPage({
               {/* Question */}
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {processLatexContent(activeFRQ.question)}
+                  {processLatexContent(frq.question)}
                 </ReactMarkdown>
               </div>
 
@@ -2287,7 +2280,7 @@ export default function StudyPage({
                 <div className="mt-4 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                      {`**Sample Solution:**\n\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n${activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : ""}**Explanation:**\n${activeFRQ.explanation}`}
+                      {`**Sample Solution:**\n\`\`\`java\n${frq.sample_solution}\n\`\`\`\n\n${frq.rubric ? `**Rubric:**\n${frq.rubric}\n\n` : ""}**Explanation:**\n${frq.explanation}`}
                     </ReactMarkdown>
                   </div>
                 </div>
@@ -2456,7 +2449,30 @@ export default function StudyPage({
         <div className="w-1/2 flex-shrink-0 border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900">
 
           {/* ── SPLIT VIEW: Code (top) + Evaluation (bottom) ── */}
-          {frqEvalResult !== null ? (
+          {showFRQSolution && activeFRQ ? (
+            /* ── SOLUTION VIEW ── */
+            <>
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10">
+                <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Sample Solution
+                </span>
+                <button
+                  onClick={() => setShowFRQSolution(false)}
+                  className="text-xs px-3 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors"
+                >
+                  ← Back to Editor
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                    {`\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n${activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : ""}**Explanation:**\n${activeFRQ.explanation}`}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            </>
+          ) : frqEvalResult !== null ? (
             <>
               {/* Top half: student code with error highlights */}
               <div className="flex flex-col flex-shrink-0">

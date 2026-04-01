@@ -32,7 +32,7 @@ function parseOptionSections(
   const result: Record<string, string> = {};
   // Build a regex that finds "Option X" or standalone "X." or "X)" headings
   const pattern = new RegExp(
-    `(?:Option\\s+|\\*{0,2})([${optionKeys.join("")}])(?:\\*{0,2})[.):)]?\\s*(?:–|—|-)?\\s*`,
+    `(?:Option\\s+|\\*{0,2})([${optionKeys.join("")}])(?:\\*{0,2})(?:[.):)]|\\s*[-–—])\\s*`,
     "gi"
   );
 
@@ -49,7 +49,7 @@ function parseOptionSections(
     const chunk = text.slice(index, end).trim();
     // Strip the leading "Option X:" header itself
     const body = chunk.replace(
-      new RegExp(`^(?:Option\\s+)?\\*{0,2}${letter}\\*{0,2}[.):)]?\\s*(?:–|—|-)?\\s*`, "i"),
+      new RegExp(`^(?:Option\\s+)?\\*{0,2}${letter}\\*{0,2}(?:[.):)]|\\s*[-–—])?\\s*`, "i"),
       ""
     ).trim();
     if (body) result[letter] = body;
