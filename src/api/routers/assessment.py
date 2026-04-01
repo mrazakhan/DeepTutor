@@ -676,23 +676,59 @@ async def generate_additional_questions(
             "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
             "in {course_name}.\n\n"
             "IMPORTANT: The AP CSA exam uses 4 answer choices (A-D), NOT 5.\n\n"
-            "You MUST respond in EXACTLY this JSON format (no markdown, no extra text):\n"
+            "CRITICAL ACCURACY RULES:\n"
+            "- For code questions: mentally execute EVERY line before choosing an answer.\n"
+            "- You MUST fill in the 'reasoning' field BEFORE the 'correct' field.\n"
+            "- Your 'correct' answer MUST match your conclusion in 'reasoning'.\n"
+            "- They must NEVER contradict each other. After writing your reasoning, "
+            "re-read it and confirm 'correct' matches your conclusion.\n\n"
+            "You MUST respond in EXACTLY this JSON format (fields in this order, no markdown, no extra text):\n"
             '{{\n'
-            '  "question": "The question text here",\n'
+            '  "question": "The question text here. For code, use ```java\\ncode\\n``` blocks.",\n'
             '  "options": {{\n'
             '    "A": "First option",\n'
             '    "B": "Second option",\n'
             '    "C": "Third option",\n'
             '    "D": "Fourth option"\n'
             '  }},\n'
-            '  "correct": "B",\n'
-            '  "explanation": "Detailed step-by-step explanation",\n'
+            '  "reasoning": "Step-by-step trace. For code: simulate each line and track every variable value. '
+            'End with: Therefore the answer is X because ...",\n'
+            '  "correct": "X",\n'
+            '  "explanation": "Why X is correct and why each other option is wrong.",\n'
             '  "category": "The AP CSA concept category tested, e.g. Methods, ArrayList, 2D Array, Recursion, Inheritance"\n'
-            '}}\n\n'
-            "The explanation should cover why the correct answer is right AND why each "
-            "incorrect answer is wrong."
+            '}}\n'
             + difficulty_hint + avoid_hint
         )
+
+        async def _verify_assessment_mcq(parsed: dict) -> dict:
+            """Verification pass for code-based MCQs to catch answer/explanation contradictions."""
+            question_text = parsed.get("question", "")
+            if "```" not in question_text and "arr" not in question_text and "int " not in question_text:
+                return parsed  # Not a code question
+            try:
+                from src.api.routers.exam import _MCQ_VERIFY_PROMPT, _parse_json_response as _exam_parse
+                options_str = "\n".join(f"  {k}: {v}" for k, v in parsed.get("options", {}).items())
+                verify_prompt = _MCQ_VERIFY_PROMPT.format(
+                    question=question_text,
+                    options=options_str,
+                    correct=parsed.get("correct", "?"),
+                    reasoning=parsed.get("reasoning", parsed.get("explanation", "")),
+                    explanation=parsed.get("explanation", ""),
+                )
+                result = await agent.process(
+                    message=verify_prompt, history=[],
+                    topic_title=topic.title, unit_title=unit.title,
+                    unit_number=unit.unit_number, stream=False,
+                )
+                raw_v = result.get("response", "")
+                verified = _parse_json_response(raw_v)
+                if verified and "correct" in verified and not verified.get("verified", True):
+                    logger.warning(f"Assessment MCQ answer corrected: {parsed.get('correct')} → {verified['correct']}")
+                    parsed["correct"] = verified["correct"]
+                    parsed["explanation"] = verified.get("explanation", parsed.get("explanation", ""))
+            except Exception as e:
+                logger.warning(f"Assessment MCQ verification failed: {e}")
+            return parsed
 
         questions = []
         for i in range(body.count):
@@ -704,6 +740,8 @@ async def generate_additional_questions(
             raw = await _generate(mcq_prompt.format(**fmt) + variation)
             parsed = _parse_json_response(raw)
             if parsed and all(k in parsed for k in ("question", "options", "correct", "explanation")):
+                # Verification pass for code questions
+                parsed = await _verify_assessment_mcq(parsed)
                 questions.append(parsed)
             else:
                 logger.warning(f"Additional MCQ {i+1} not valid JSON")

@@ -105,12 +105,20 @@ Here is an example of the style and difficulty expected:
 Now generate a DIFFERENT question on the same topic at AP exam difficulty.
 The question must be completely new — not a rephrasing of the example.
 
-Return ONLY valid JSON (no markdown fences):
+CRITICAL RULES FOR ACCURACY:
+- If the question involves code, mentally execute EVERY line before choosing the correct answer.
+- The "reasoning" field must be completed BEFORE you fill in "correct".
+- Your "correct" answer MUST follow directly from your "reasoning" — they must never contradict each other.
+- After writing your reasoning, re-read it and confirm your "correct" matches your conclusion.
+
+Return ONLY valid JSON (no markdown fences).
+The fields MUST appear in this exact order so you reason before committing to an answer:
 {{
   "question": "The question text with any code in ```java\\ncode\\n``` blocks",
   "options": {{"A": "first option", "B": "second option", "C": "third option", "D": "fourth option"}},
-  "correct": "B",
-  "explanation": "Step-by-step explanation of why the correct answer is right"
+  "reasoning": "Trace through the problem step by step. For code: simulate each line of execution and track variable values. End with: 'Therefore the answer is X because ...'",
+  "correct": "X",
+  "explanation": "Clear explanation of why X is correct and why each other option is wrong"
 }}"""
 
 _EXAM_FRQ_PROMPT = """Generate a single AP {course_name} Free Response Question.
@@ -133,6 +141,70 @@ Return ONLY valid JSON (no markdown fences):
   "rubric": "Detailed rubric with point values for each part (9 points total)",
   "explanation": "Step-by-step explanation of the solution approach"
 }}"""
+
+
+_MCQ_VERIFY_PROMPT = """You are a careful answer verifier. A multiple-choice question was generated below.
+Your job: independently verify whether the marked correct answer is actually correct.
+
+Question:
+{question}
+
+Options:
+{options}
+
+Claimed correct answer: {correct}
+
+Claimed reasoning:
+{reasoning}
+
+Instructions:
+1. For code questions: trace through EVERY line of execution and track all variable values.
+2. Determine the correct answer independently.
+3. If the claimed answer matches your determination: respond with {{"verified": true, "correct": "{correct}", "explanation": "{explanation}"}}
+4. If the claimed answer is WRONG: respond with {{"verified": false, "correct": "X", "explanation": "corrected step-by-step explanation"}}
+
+Return ONLY valid JSON."""
+
+
+async def _verify_mcq(agent, parsed: dict, topic_title: str, unit_title: str, unit_number: int) -> dict:
+    """
+    Independently verify a generated MCQ by running a second LLM pass.
+    Returns the (possibly corrected) parsed dict.
+    Only runs for questions that contain code blocks (highest hallucination risk).
+    """
+    question_text = parsed.get("question", "")
+    if "```" not in question_text and "arr" not in question_text and "int " not in question_text:
+        # Not a code question — skip expensive verification
+        return parsed
+
+    try:
+        options_str = "\n".join(
+            f"  {k}: {v}" for k, v in parsed.get("options", {}).items()
+        )
+        verify_prompt = _MCQ_VERIFY_PROMPT.format(
+            question=question_text,
+            options=options_str,
+            correct=parsed.get("correct", "?"),
+            reasoning=parsed.get("reasoning", parsed.get("explanation", "")),
+            explanation=parsed.get("explanation", ""),
+        )
+        result = await agent.process(
+            message=verify_prompt, history=[],
+            topic_title=topic_title, unit_title=unit_title,
+            unit_number=unit_number, stream=False,
+        )
+        raw = result.get("response", "")
+        verified = _parse_json_response(raw)
+        if verified and "correct" in verified:
+            if not verified.get("verified", True):
+                logger.warning(
+                    f"MCQ answer corrected: {parsed.get('correct')} → {verified['correct']}"
+                )
+                parsed["correct"] = verified["correct"]
+                parsed["explanation"] = verified.get("explanation", parsed.get("explanation", ""))
+    except Exception as e:
+        logger.warning(f"MCQ verification failed (using original): {e}")
+    return parsed
 
 
 class GenerateExamRequest(BaseModel):
@@ -454,6 +526,10 @@ async def _generate_exam_questions(
                     raw = await _gen(prompt, topic.title, unit.title, unit.unit_number)
                     parsed = _parse_json_response(raw)
                     if parsed and all(k in parsed for k in ("question", "options", "correct")):
+                        # Verification pass for code questions (catches answer/explanation contradictions)
+                        parsed = await _verify_mcq(
+                            agent, parsed, topic.title, unit.title, unit.unit_number
+                        )
                         questions.append(ExamQuestion(
                             exam_id=exam_id,
                             section_index=mcq_section_idx,
