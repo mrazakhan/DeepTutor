@@ -313,6 +313,21 @@ class CounselingContent(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class UserSession(Base):
+    """Persistent login sessions — survives container restarts."""
+
+    __tablename__ = "user_sessions"
+
+    token = Column(String(100), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    username = Column(String(50), nullable=False)
+    display_name = Column(String(100), nullable=False)
+    role = Column(String(20), nullable=False)
+    expires_at = Column(Float, nullable=False)  # Unix timestamp
+
+    user = relationship("User")
+
+
 class CounselingResume(Base):
     """User-uploaded resume for personalized counseling analysis."""
 

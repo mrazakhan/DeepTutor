@@ -2027,7 +2027,36 @@ export default function StudyPage({
 
               {/* Question */}
               <div className="prose prose-sm dark:prose-invert max-w-none mb-5">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code: ({ className, children, ...props }: any) => {
+                      const isBlock = !!className?.startsWith("language-") || String(children).includes("\n");
+                      if (!isBlock) {
+                        return <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs font-mono" {...props}>{children}</code>;
+                      }
+                      const lines = String(children).replace(/\n$/, "").split("\n");
+                      return (
+                        <div className="my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-xs font-mono leading-relaxed">
+                              <tbody>
+                                {lines.map((line, i) => (
+                                  <tr key={i} className="hover:bg-white/5 transition-colors">
+                                    <td className="select-none text-right pr-3 pl-3 py-px w-8 border-r border-slate-700/60 text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
+                                    <td className="pl-4 pr-4 py-px text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    },
+                    pre: ({ children }: any) => <>{children}</>,
+                  }}
+                >
                   {processLatexContent(activeMCQ.question)}
                 </ReactMarkdown>
               </div>

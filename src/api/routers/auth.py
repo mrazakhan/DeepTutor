@@ -16,15 +16,12 @@ from pydantic import BaseModel
 from sqlalchemy import func
 
 from src.database.engine import get_db, init_db
-from src.database.models import AllowedEmail, User
+from src.database.models import AllowedEmail, User, UserSession
 
 router = APIRouter()
 init_db()
 
-# Simple in-memory token store.  Replace with JWT or Redis for production.
-_tokens: dict[str, dict] = {}  # token -> {user_id, username, role, expires}
-
-TOKEN_EXPIRY_SECONDS = 60 * 60 * 24 * 7  # 7 days
+TOKEN_EXPIRY_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
 
 class LoginRequest(BaseModel):
@@ -49,18 +46,29 @@ def _hash_password(password: str) -> str:
 
 
 def _get_current_user(request: Request) -> dict | None:
-    """Extract user from Authorization header."""
+    """Extract user from Authorization header (DB-backed, survives restarts)."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return None
     token = auth[7:]
-    session = _tokens.get(token)
-    if not session:
-        return None
-    if session["expires"] < time.time():
-        del _tokens[token]
-        return None
-    return session
+    db = get_db()
+    try:
+        session = db.query(UserSession).filter(UserSession.token == token).first()
+        if not session:
+            return None
+        if session.expires_at < time.time():
+            db.delete(session)
+            db.commit()
+            return None
+        return {
+            "user_id": session.user_id,
+            "username": session.username,
+            "display_name": session.display_name,
+            "role": session.role,
+            "expires": session.expires_at,
+        }
+    finally:
+        db.close()
 
 
 @router.post("/register")
@@ -154,13 +162,16 @@ async def login(body: LoginRequest):
             db.rollback()
 
         token = secrets.token_urlsafe(32)
-        _tokens[token] = {
-            "user_id": user.id,
-            "username": user.username,
-            "display_name": user.display_name,
-            "role": user.role,
-            "expires": time.time() + TOKEN_EXPIRY_SECONDS,
-        }
+        session = UserSession(
+            token=token,
+            user_id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            role=user.role,
+            expires_at=time.time() + TOKEN_EXPIRY_SECONDS,
+        )
+        db.add(session)
+        db.commit()
 
         return {
             "token": token,
@@ -229,5 +240,12 @@ async def logout(request: Request):
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         token = auth[7:]
-        _tokens.pop(token, None)
+        db = get_db()
+        try:
+            session = db.query(UserSession).filter(UserSession.token == token).first()
+            if session:
+                db.delete(session)
+                db.commit()
+        finally:
+            db.close()
     return {"status": "logged_out"}
