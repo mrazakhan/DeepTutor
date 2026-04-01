@@ -74,18 +74,26 @@ function splitIntoSteps(content: string): { title: string; body: string }[] {
   // Try splitting by ## headings
   const headingParts = content.split(/\n(?=## )/);
   if (headingParts.length >= 2) {
-    return headingParts.map((part) => {
+    const steps: { title: string; body: string }[] = [];
+    let preamble = "";
+
+    for (const part of headingParts) {
       const lines = part.trim().split("\n");
       const firstLine = lines[0];
       if (firstLine.startsWith("## ")) {
-        return {
+        const body = lines.slice(1).join("\n").trim();
+        // Prepend the preamble (if any) into the first real section
+        steps.push({
           title: stripMarkers(firstLine.replace(/^## /, "").trim()),
-          body: lines.slice(1).join("\n").trim(),
-        };
+          body: preamble ? `${preamble}\n\n${body}` : body,
+        });
+        preamble = ""; // only prepend to first section
+      } else {
+        // Preamble before first heading — save to merge into first real step
+        preamble = part.trim();
       }
-      // Preamble before first heading
-      return { title: "Introduction", body: part.trim() };
-    });
+    }
+    if (steps.length > 0) return steps;
   }
 
   // Fallback: split by ---
