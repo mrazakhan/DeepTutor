@@ -13,15 +13,23 @@ _SessionLocal = None
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "ap_academy.db"
 
 
+def _set_wal_mode(dbapi_conn, connection_record):
+    """Enable WAL mode and busy timeout so concurrent writers don't block each other."""
+    dbapi_conn.execute("PRAGMA journal_mode=WAL")
+    dbapi_conn.execute("PRAGMA busy_timeout=10000")  # 10s retry window
+
+
 def get_engine():
     global _engine
     if _engine is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        from sqlalchemy import event
         _engine = create_engine(
             f"sqlite:///{DB_PATH}",
             connect_args={"check_same_thread": False},
             echo=False,
         )
+        event.listen(_engine, "connect", _set_wal_mode)
     return _engine
 
 
