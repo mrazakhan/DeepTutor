@@ -6,6 +6,7 @@ exam_questions, finds code-based ones that may have hallucinated answers,
 and uses a direct LLM call to verify and correct them.
 
 Runs ~2-3s per question (no RAG needed for verification).
+Uses short per-row transactions so it never blocks the live app.
 
 Usage:
     python scripts/verify_fix_mcqs.py                  # dry-run (no DB writes)
@@ -135,107 +136,139 @@ async def run(fix: bool, table: str, limit: int):
     total_corrected = 0
     total_skipped = 0
 
+    # ── Collect IDs first (short read-only session, then close) ───────────────
     db = get_db()
     try:
-        # ── Practice MCQs in topic_content ────────────────────────────────────
         if table in ("all", "practice"):
-            logger.info("=" * 60)
-            logger.info("Scanning practice MCQs in topic_content ...")
-            tc_rows = db.query(TopicContent).filter(TopicContent.content.isnot(None)).all()
-            logger.info(f"Found {len(tc_rows)} topic_content rows")
+            tc_ids = [r.id for r in db.query(TopicContent.id).filter(TopicContent.content.isnot(None)).all()]
+        else:
+            tc_ids = []
+        if table in ("all", "exam"):
+            eq_ids = [r.id for r in db.query(ExamQuestion.id).filter(ExamQuestion.question_type == "mcq").all()]
+        else:
+            eq_ids = []
+    finally:
+        db.close()
 
-            for tc in tc_rows:
-                if limit and total_checked >= limit:
-                    break
+    logger.info(f"Found {len(tc_ids)} topic_content rows, {len(eq_ids)} exam MCQ rows")
+
+    # ── Practice MCQs in topic_content ────────────────────────────────────────
+    if tc_ids:
+        logger.info("=" * 60)
+        logger.info("Scanning practice MCQs in topic_content ...")
+
+        for tc_id in tc_ids:
+            if limit and total_checked >= limit:
+                break
+
+            # Short read session per row
+            db = get_db()
+            try:
+                tc = db.query(TopicContent).filter(TopicContent.id == tc_id).first()
+                if not tc or not tc.content:
+                    continue
+                topic_title = tc.topic.title if tc.topic else f"tc:{tc_id}"
                 try:
                     data = json.loads(tc.content)
                 except Exception:
                     continue
+                mcqs = list(data.get("practice_mcq", []))
+            finally:
+                db.close()
 
-                mcqs = data.get("practice_mcq", [])
-                changed = False
-
-                for i, mcq in enumerate(mcqs):
-                    if limit and total_checked >= limit:
-                        break
-
-                    if not is_code_question(mcq):
-                        total_skipped += 1
-                        continue
-
-                    total_checked += 1
-                    topic_title = tc.topic.title if tc.topic else f"tc:{tc.id}"
-
-                    was_corrected, fixed_mcq = await verify_one(llm_client, mcq)
-
-                    if was_corrected:
-                        total_corrected += 1
-                        old_ans = mcq.get("correct", "?")
-                        new_ans = fixed_mcq["correct"]
-                        logger.warning(f"  CORRECTED [{topic_title}] MCQ {i}: {old_ans} → {new_ans}")
-                        if fix:
-                            mcqs[i] = fixed_mcq
-                            changed = True
-                    else:
-                        logger.info(f"  OK [{topic_title}] MCQ {i}: {mcq.get('correct','?')}")
-
-                    await asyncio.sleep(0.3)  # gentle rate-limit
-
-                if fix and changed:
-                    data["practice_mcq"] = mcqs
-                    tc.content = json.dumps(data)
-
-            if fix:
-                db.commit()
-                logger.info("topic_content changes committed to DB.")
-
-        # ── Exam MCQs in exam_questions ───────────────────────────────────────
-        if table in ("all", "exam"):
-            logger.info("=" * 60)
-            logger.info("Scanning exam MCQs in exam_questions ...")
-            eq_rows = (
-                db.query(ExamQuestion)
-                .filter(ExamQuestion.question_type == "mcq")
-                .all()
-            )
-            logger.info(f"Found {len(eq_rows)} exam MCQ rows")
-
-            for eq in eq_rows:
+            changed = False
+            for i, mcq in enumerate(mcqs):
                 if limit and total_checked >= limit:
                     break
-                try:
-                    qdata = json.loads(eq.question_data)
-                except Exception:
-                    continue
-
-                if not is_code_question(qdata):
+                if not is_code_question(mcq):
                     total_skipped += 1
                     continue
 
                 total_checked += 1
-                was_corrected, fixed_qdata = await verify_one(llm_client, qdata)
+                was_corrected, fixed_mcq = await verify_one(llm_client, mcq)
 
                 if was_corrected:
                     total_corrected += 1
-                    old_ans = qdata.get("correct", "?")
-                    new_ans = fixed_qdata["correct"]
-                    logger.warning(f"  CORRECTED exam MCQ {eq.id[:8]}: {old_ans} → {new_ans}")
-                    if fix:
-                        eq.question_data = json.dumps(fixed_qdata)
-                        # NOTE: we intentionally do NOT retroactively change
-                        # student answers or scores — students answered based on
-                        # what the system showed them and should not be penalised.
+                    old_ans = mcq.get("correct", "?")
+                    new_ans = fixed_mcq["correct"]
+                    logger.warning(f"  CORRECTED [{topic_title}] MCQ {i}: {old_ans} → {new_ans}")
+                    mcqs[i] = fixed_mcq
+                    changed = True
                 else:
-                    logger.info(f"  OK exam MCQ {eq.id[:8]}: {qdata.get('correct','?')}")
+                    logger.info(f"  OK [{topic_title}] MCQ {i}: {mcq.get('correct','?')}")
 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.3)  # gentle rate-limit
 
-            if fix:
-                db.commit()
-                logger.info("exam_questions changes committed to DB.")
+            # Short write session — only held open for milliseconds
+            if fix and changed:
+                db = get_db()
+                try:
+                    tc = db.query(TopicContent).filter(TopicContent.id == tc_id).first()
+                    if tc:
+                        data2 = json.loads(tc.content)
+                        data2["practice_mcq"] = mcqs
+                        tc.content = json.dumps(data2)
+                        db.commit()
+                        logger.info(f"  [saved] {topic_title}")
+                except Exception as e:
+                    logger.warning(f"  [save failed] {topic_title}: {e}")
+                    db.rollback()
+                finally:
+                    db.close()
 
-    finally:
-        db.close()
+    # ── Exam MCQs in exam_questions ───────────────────────────────────────────
+    if eq_ids:
+        logger.info("=" * 60)
+        logger.info("Scanning exam MCQs in exam_questions ...")
+
+        for eq_id in eq_ids:
+            if limit and total_checked >= limit:
+                break
+
+            db = get_db()
+            try:
+                eq = db.query(ExamQuestion).filter(ExamQuestion.id == eq_id).first()
+                if not eq or not eq.question_data:
+                    continue
+                try:
+                    qdata = json.loads(eq.question_data)
+                except Exception:
+                    continue
+            finally:
+                db.close()
+
+            if not is_code_question(qdata):
+                total_skipped += 1
+                continue
+
+            total_checked += 1
+            was_corrected, fixed_qdata = await verify_one(llm_client, qdata)
+
+            if was_corrected:
+                total_corrected += 1
+                old_ans = qdata.get("correct", "?")
+                new_ans = fixed_qdata["correct"]
+                logger.warning(f"  CORRECTED exam MCQ {eq_id[:8]}: {old_ans} → {new_ans}")
+
+                # Short write session — only held open for milliseconds
+                # NOTE: we intentionally do NOT retroactively change student answers
+                # or scores — students answered based on what the system showed them.
+                if fix:
+                    db = get_db()
+                    try:
+                        eq = db.query(ExamQuestion).filter(ExamQuestion.id == eq_id).first()
+                        if eq:
+                            eq.question_data = json.dumps(fixed_qdata)
+                            db.commit()
+                    except Exception as e:
+                        logger.warning(f"  [save failed] exam {eq_id[:8]}: {e}")
+                        db.rollback()
+                    finally:
+                        db.close()
+            else:
+                logger.info(f"  OK exam MCQ {eq_id[:8]}: {qdata.get('correct','?')}")
+
+            await asyncio.sleep(0.3)
 
     # ── Summary ───────────────────────────────────────────────────────────────
     logger.info("=" * 60)
