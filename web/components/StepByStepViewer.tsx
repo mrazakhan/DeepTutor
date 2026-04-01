@@ -93,6 +93,9 @@ function splitIntoSteps(content: string): { title: string; body: string }[] {
         preamble = part.trim();
       }
     }
+    // Filter out steps with trivially short bodies (e.g. just a topic title)
+    const meaningful = steps.filter((s) => s.body.length > 40);
+    if (meaningful.length > 0) return meaningful;
     if (steps.length > 0) return steps;
   }
 
@@ -105,7 +108,20 @@ function splitIntoSteps(content: string): { title: string; body: string }[] {
     }));
   }
 
-  // Single section
+  // Single section — split into chunks of ~3 paragraphs each so it's never one giant wall
+  const paragraphs = content.trim().split(/\n\n+/);
+  if (paragraphs.length > 4) {
+    const chunkSize = 3;
+    const chunks: { title: string; body: string }[] = [];
+    for (let i = 0; i < paragraphs.length; i += chunkSize) {
+      chunks.push({
+        title: i === 0 ? "Overview" : `Part ${Math.floor(i / chunkSize) + 1}`,
+        body: paragraphs.slice(i, i + chunkSize).join("\n\n"),
+      });
+    }
+    return chunks;
+  }
+
   return [{ title: "Overview", body: content.trim() }];
 }
 
@@ -142,29 +158,43 @@ function splitIntoBlocks(body: string): string[] {
   return blocks.filter(Boolean);
 }
 
-/** Custom ReactMarkdown components with concept highlighting */
+/** Custom ReactMarkdown components with concept highlighting + light-mode code blocks */
 const highlightComponents = {
   strong: ({ children, ...props }: React.ComponentProps<"strong">) => (
     <strong className="concept-highlight" {...props}>
       {children}
     </strong>
   ),
-  code: ({
-    children,
-    className,
-    ...props
-  }: React.ComponentProps<"code"> & { className?: string }) => {
-    if (!className) {
+  pre: ({ children }: any) => <>{children}</>,
+  code: ({ children, className, ...props }: any) => {
+    const isBlock = !!className?.startsWith("language-") || String(children).includes("\n");
+    if (!isBlock) {
       return (
-        <code className="code-highlight" {...props}>
+        <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs font-mono text-slate-800 dark:text-slate-200" {...props}>
           {children}
         </code>
       );
     }
+    const lines = String(children).replace(/\n$/, "").split("\n");
     return (
-      <code className={className} {...props}>
-        {children}
-      </code>
+      <div className="not-prose my-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-xs font-mono leading-normal">
+            <tbody>
+              {lines.map((line: string, i: number) => (
+                <tr key={i} className="border-b border-slate-200 dark:border-slate-800/60 last:border-b-0 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+                  <td className="select-none text-right pr-3 pl-3 py-0.5 w-8 border-r border-slate-200 dark:border-slate-700/60 text-slate-400 dark:text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>
+                    {i + 1}
+                  </td>
+                  <td className="pl-4 pr-4 py-0.5 text-slate-800 dark:text-slate-100 whitespace-pre">
+                    {line || "\u00a0"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     );
   },
 };

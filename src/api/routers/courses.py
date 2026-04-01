@@ -630,19 +630,35 @@ _PROMPT_FRQ = (
 )
 
 _PROMPT_EXAM = (
-    "Explain how the topic '{topic_title}' (Topic {topic_number}) from "
-    "Unit {unit_number}: {unit_title} in {course_name} appears on the AP exam. "
-    "Cover: what types of questions test this topic (MCQ vs FRQ), how frequently "
-    "it appears, what specific skills are tested, and any connections to other topics. "
-    "Give concrete examples of how exam questions are framed around this topic."
+    "You are an expert AP exam coach. Explain exactly how '{topic_title}' "
+    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} in {course_name} "
+    "is tested on the AP exam.\n\n"
+    "STRUCTURE: Write 4–6 sections using ## headings — one per aspect below. "
+    "Every section must be specific, concrete, and actionable. No vague generalities.\n\n"
+    "Required sections (use these exact headings):\n"
+    "## Exam Frequency & Format\n"
+    "## MCQ Question Patterns\n"
+    "## FRQ Expectations\n"
+    "## Common Trap Answers\n"
+    "## Key Skills the College Board Tests\n"
+    "## Connections to Other Topics\n\n"
+    "For MCQ/FRQ sections: write 2–3 actual example question stems or scenarios. "
+    "For trap answers: give specific wrong choices students fall for and explain why. "
+    "Use ```java code blocks for any code examples."
 )
 
 _PROMPT_MISTAKES = (
-    "What are the most common mistakes and misconceptions students have about "
-    "'{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
-    "in {course_name}? For each mistake, explain: what students get wrong, why they "
-    "get confused, and how to avoid the error. Include specific examples that "
-    "illustrate the correct vs incorrect approach."
+    "You are an expert AP tutor. Identify the 5–7 most common mistakes students make "
+    "about '{topic_title}' (Topic {topic_number}) from Unit {unit_number}: {unit_title} "
+    "in {course_name}.\n\n"
+    "STRUCTURE: Use one ## heading per mistake. Format each section as:\n"
+    "## [Short descriptive mistake name]\n"
+    "- **What students do wrong:** concrete description\n"
+    "- **Why they get confused:** the mental model error\n"
+    "- **Wrong approach** (with ```java code example showing the bug)\n"
+    "- **Correct approach** (with ```java code showing the fix)\n"
+    "- **Memory tip:** one sentence to remember the right way\n\n"
+    "Be highly specific. Every mistake must have a code example contrasting wrong vs correct."
 )
 
 # ── Custom course prompt variants (non-AP) ──
