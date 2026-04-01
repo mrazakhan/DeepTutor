@@ -76,16 +76,20 @@ function InlineMD({ children }: { children: string }) {
       rehypePlugins={[rehypeKatex]}
       components={{
         p: ({ children: c }) => <span className="block mb-1 last:mb-0">{c}</span>,
-        code: ({ inline, children: c, ...rest }: any) =>
-          inline ? (
-            <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs font-mono">
-              {c}
-            </code>
-          ) : (
+        // react-markdown v8+ removed the `inline` prop; detect block vs inline via className
+        code: ({ className, children: c, ...rest }: any) => {
+          const isBlock = !!className?.startsWith("language-") || String(c).includes("\n");
+          return isBlock ? (
             <pre className="mt-1 mb-1 p-2 bg-slate-800 dark:bg-slate-900 rounded text-xs font-mono overflow-x-auto whitespace-pre text-slate-100">
               <code>{c}</code>
             </pre>
-          ),
+          ) : (
+            <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs font-mono text-slate-800 dark:text-slate-200">
+              {c}
+            </code>
+          );
+        },
+        pre: ({ children }: any) => <>{children}</>,
       }}
     >
       {processLatexContent(children)}

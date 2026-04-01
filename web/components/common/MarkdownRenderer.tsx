@@ -72,12 +72,13 @@ export default function MarkdownRenderer({
   const codeComponents = {
     code: ({
       node,
-      inline,
       className: codeClassName,
       children,
       ...props
     }: any) => {
-      if (inline) {
+      // react-markdown v8+ removed `inline` prop; detect inline via className absence and no newlines
+      const isInline = !codeClassName?.startsWith("language-") && !String(children).includes("\n");
+      if (isInline) {
         return (
           <code
             className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded text-sm font-mono"

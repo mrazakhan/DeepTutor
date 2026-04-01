@@ -35,6 +35,7 @@ import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/Pr
 import { processLatexContent } from "@/lib/latex";
 import { parseChatMCQ } from "@/lib/mcqParser";
 import MCQExplanation from "@/components/common/MCQExplanation";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { useGlobal } from "@/context/GlobalContext";
@@ -1616,6 +1617,32 @@ export default function StudyPage({
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
+                    components={{
+                      code: ({ className, children, ...props }: any) => {
+                        const isBlock = !!className?.startsWith("language-") || String(children).includes("\n");
+                        if (!isBlock) {
+                          return <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs font-mono" {...props}>{children}</code>;
+                        }
+                        const lines = String(children).replace(/\n$/, "").split("\n");
+                        return (
+                          <div className="my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+                            <div className="overflow-x-auto">
+                              <table className="w-full border-collapse text-xs font-mono leading-relaxed">
+                                <tbody>
+                                  {lines.map((line, i) => (
+                                    <tr key={i} className="hover:bg-white/5 transition-colors">
+                                      <td className="select-none text-right pr-3 pl-3 py-px w-8 border-r border-slate-700/60 text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
+                                      <td className="pl-4 pr-4 py-px text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      },
+                      pre: ({ children }: any) => <>{children}</>,
+                    }}
                   >
                     {processLatexContent(msg.content)}
                   </ReactMarkdown>
@@ -2278,11 +2305,10 @@ export default function StudyPage({
               {/* Solution (shown after View Solution) */}
               {showFRQSolution && (
                 <div className="mt-4 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                      {`**Sample Solution:**\n\`\`\`java\n${frq.sample_solution}\n\`\`\`\n\n${frq.rubric ? `**Rubric:**\n${frq.rubric}\n\n` : ""}**Explanation:**\n${frq.explanation}`}
-                    </ReactMarkdown>
-                  </div>
+                  <MarkdownRenderer
+                    content={`**Sample Solution:**\n\n${frq.sample_solution}\n\n${frq.rubric ? `**Rubric:**\n${frq.rubric}\n\n` : ""}**Explanation:**\n${frq.explanation}`}
+                    variant="compact"
+                  />
                 </div>
               )}
 
@@ -2465,11 +2491,10 @@ export default function StudyPage({
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4">
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {`\`\`\`java\n${activeFRQ.sample_solution}\n\`\`\`\n\n${activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : ""}**Explanation:**\n${activeFRQ.explanation}`}
-                  </ReactMarkdown>
-                </div>
+                <MarkdownRenderer
+                  content={`${activeFRQ.sample_solution}\n\n${activeFRQ.rubric ? `**Rubric:**\n${activeFRQ.rubric}\n\n` : ""}**Explanation:**\n${activeFRQ.explanation}`}
+                  variant="compact"
+                />
               </div>
             </>
           ) : frqEvalResult !== null ? (
