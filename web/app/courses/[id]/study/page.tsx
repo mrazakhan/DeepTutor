@@ -296,6 +296,8 @@ export default function StudyPage({
   const [activeIntroContent, setActiveIntroContent] = useState<string | null>(null);
   // Card-based mistakes viewer
   const [activeMistakesContent, setActiveMistakesContent] = useState<string | null>(null);
+  // Card-based exam tips viewer
+  const [activeExamContent, setActiveExamContent] = useState<string | null>(null);
   // Cache AI responses — track which suggestion key triggered the current WS request
   const pendingSuggestionKeyRef = useRef<SuggestionKey | null>(null);
   // Assessment / progress tracking
@@ -629,6 +631,8 @@ export default function StudyPage({
         setActiveIntroContent(textKeys[key]!);
       } else if (key === "mistakes") {
         setActiveMistakesContent(textKeys[key]!);
+      } else if (key === "exam") {
+        setActiveExamContent(textKeys[key]!);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -1076,11 +1080,13 @@ export default function StudyPage({
                 } as PreloadedContent));
               })
               .catch(console.error);
-            // Show card-based viewer for intro and mistakes responses
+            // Show card-based viewer for intro, mistakes, and exam responses
             if (cacheKey === "intro") {
               setActiveIntroContent(data.content);
             } else if (cacheKey === "mistakes") {
               setActiveMistakesContent(data.content);
+            } else if (cacheKey === "exam") {
+              setActiveExamContent(data.content);
             }
           } else {
             pendingSuggestionKeyRef.current = null;
@@ -1688,6 +1694,28 @@ export default function StudyPage({
                     { role: "assistant", content: activeIntroContent },
                   ]);
                   setActiveIntroContent(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Card-based exam tips viewer */}
+        {activeExamContent && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="flex-1 max-w-[85%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm leading-relaxed">
+              <StepByStepViewer
+                content={activeExamContent}
+                topicTitle={topic?.title}
+                onDone={() => {
+                  setMessages((prev) => [
+                    ...prev,
+                    { role: "assistant", content: activeExamContent },
+                  ]);
+                  setActiveExamContent(null);
                 }}
               />
             </div>
