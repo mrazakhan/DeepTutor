@@ -34,6 +34,7 @@ import { apiUrl, wsUrl } from "@/lib/api";
 import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
 import { processLatexContent } from "@/lib/latex";
 import { parseChatMCQ } from "@/lib/mcqParser";
+import MCQExplanation from "@/components/common/MCQExplanation";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { useGlobal } from "@/context/GlobalContext";
@@ -1808,19 +1809,13 @@ export default function StudyPage({
 
                     {/* Explanation shown after submit */}
                     {showMCQExplanation && (
-                      <div className={`mb-4 p-3 rounded-lg text-xs ${
-                        selectedAnswer === q.correct
-                          ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
-                          : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
-                      }`}>
-                        <div className="font-semibold mb-1">
-                          {selectedAnswer === q.correct ? "✅ Correct!" : `❌ Incorrect — correct answer: (${q.correct})`}
-                        </div>
-                        <div className="prose prose-xs dark:prose-invert max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {processLatexContent(q.explanation)}
-                          </ReactMarkdown>
-                        </div>
+                      <div className="mb-4 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                        <MCQExplanation
+                          explanation={q.explanation}
+                          correctAnswer={q.correct}
+                          selectedAnswer={selectedAnswer || ""}
+                          options={q.options}
+                        />
                       </div>
                     )}
 
@@ -2077,19 +2072,13 @@ export default function StudyPage({
 
               {/* Explanation (inline after submit) */}
               {showMCQExplanation && (
-                <div className={`mb-4 p-4 rounded-xl text-sm ${
-                  selectedAnswer === activeMCQ.correct
-                    ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800"
-                    : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
-                }`}>
-                  <div className={`font-semibold mb-2 ${selectedAnswer === activeMCQ.correct ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
-                    {selectedAnswer === activeMCQ.correct ? "✅ Correct!" : `❌ Incorrect — correct answer: ${activeMCQ.correct}`}
-                  </div>
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                      {processLatexContent(activeMCQ.explanation)}
-                    </ReactMarkdown>
-                  </div>
+                <div className="mb-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                  <MCQExplanation
+                    explanation={activeMCQ.explanation}
+                    correctAnswer={activeMCQ.correct}
+                    selectedAnswer={selectedAnswer || ""}
+                    options={activeMCQ.options}
+                  />
                 </div>
               )}
 

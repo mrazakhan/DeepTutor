@@ -118,7 +118,7 @@ The fields MUST appear in this exact order so you reason before committing to an
   "options": {{"A": "first option", "B": "second option", "C": "third option", "D": "fourth option"}},
   "reasoning": "Trace through the problem step by step. For code: simulate each line of execution and track variable values. End with: 'Therefore the answer is X because ...'",
   "correct": "X",
-  "explanation": "Clear explanation of why X is correct and why each other option is wrong"
+  "explanation": "Start with: 'Option X is correct because [reason].' Then for EACH other option write 'Option Y: [why it is wrong].' Use the EXACT same letter labels A/B/C/D that appear in the options dict above — never swap or mislabel them."
 }}"""
 
 _EXAM_FRQ_PROMPT = """Generate a single AP {course_name} Free Response Question.

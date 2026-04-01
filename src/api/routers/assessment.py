@@ -694,7 +694,7 @@ async def generate_additional_questions(
             '  "reasoning": "Step-by-step trace. For code: simulate each line and track every variable value. '
             'End with: Therefore the answer is X because ...",\n'
             '  "correct": "X",\n'
-            '  "explanation": "Why X is correct and why each other option is wrong.",\n'
+            '  "explanation": "Start with: \'Option X is correct because [reason].\' Then for EACH other option write \'Option Y: [why it is wrong].\' Use the EXACT same letter labels A/B/C/D that appear in the options dict above — never swap or mislabel them.",\n'
             '  "category": "The AP CSA concept category tested, e.g. Methods, ArrayList, 2D Array, Recursion, Inheritance"\n'
             '}}\n'
             + difficulty_hint + avoid_hint
