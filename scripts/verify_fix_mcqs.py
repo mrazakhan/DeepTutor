@@ -46,8 +46,10 @@ Claimed correct answer: {claimed}
 INSTRUCTIONS:
 1. For code questions: trace through EVERY line of execution. Track ALL variable values step by step.
 2. Determine the correct answer independently — do not assume the claimed answer is right.
-3. If the claimed answer IS correct: respond {{"verified": true, "correct": "{claimed}", "explanation": "brief confirmation"}}
-4. If the claimed answer is WRONG: respond {{"verified": false, "correct": "X", "explanation": "corrected step-by-step explanation of why X is right and {claimed} is wrong"}}
+3. Your answer MUST be one of the option letters shown above (e.g. A, B, C, or D). Never say "none of the above" or any other value.
+4. If the claimed answer IS correct: respond {{"verified": true, "correct": "{claimed}", "explanation": "brief confirmation"}}
+5. If the claimed answer is WRONG: respond {{"verified": false, "correct": "X", "explanation": "corrected step-by-step explanation of why X is right and {claimed} is wrong"}}
+   Replace X with the letter of the best available option (A, B, C, or D — whichever is closest to correct).
 
 Return ONLY valid JSON. No markdown fences."""
 
@@ -102,9 +104,14 @@ async def verify_one(llm_client, q: dict) -> tuple[bool, dict]:
         raw = await llm_client.complete(prompt=prompt)
         verified = parse_json(raw)
         if verified and "correct" in verified:
-            if not verified.get("verified", True):
+            new_correct = verified["correct"]
+            valid_keys = set(q.get("options", {}).keys())  # e.g. {"A","B","C","D"}
+            # Only accept the correction if it's one of the actual option keys
+            if new_correct not in valid_keys:
+                logger.warning(f"LLM returned invalid option key '{new_correct}' (valid: {valid_keys}) — skipping")
+            elif not verified.get("verified", True):
                 corrected = dict(q)
-                corrected["correct"] = verified["correct"]
+                corrected["correct"] = new_correct
                 corrected["explanation"] = verified.get("explanation", q.get("explanation", ""))
                 return True, corrected
     except Exception as e:
