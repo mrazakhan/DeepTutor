@@ -2028,8 +2028,8 @@ export default function StudyPage({
               {/* Body: left column (question + options + buttons) | right column (explanation) */}
               <div className={`${showMCQExplanation ? "flex gap-6" : ""}`}>
 
-                {/* LEFT: question + options + action buttons */}
-                <div className={showMCQExplanation ? "flex-1 min-w-0 flex flex-col" : ""}>
+                {/* LEFT: question + options + action buttons (60%) */}
+                <div className={showMCQExplanation ? "flex-[3] min-w-0 flex flex-col" : ""}>
                   {/* Question */}
                   <div className="prose prose-sm dark:prose-invert max-w-none mb-5">
                     <ReactMarkdown
@@ -2253,9 +2253,9 @@ export default function StudyPage({
                   )}
                 </div>
 
-                {/* RIGHT: explanation panel — appears after submitting */}
+                {/* RIGHT: explanation panel — 40% width, appears after submitting */}
                 {showMCQExplanation && (
-                  <div className="w-80 xl:w-96 flex-shrink-0 border-l border-slate-200 dark:border-slate-700/60 pl-6 overflow-y-auto max-h-[600px]">
+                  <div className="flex-[2] min-w-0 border-l border-slate-200 dark:border-slate-700/60 pl-6 flex flex-col" style={{ maxHeight: "600px" }}>
                     <MCQExplanation
                       explanation={activeMCQ.explanation}
                       correctAnswer={activeMCQ.correct}
