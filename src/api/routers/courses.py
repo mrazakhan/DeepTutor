@@ -540,35 +540,48 @@ async def patch_topic_content(course_id: str, topic_id: str, body: PatchContentR
 # ──────────────────────────────────────────────────────
 
 _PROMPT_INTRO = (
-    "Provide a comprehensive introduction to the topic '{topic_title}' "
-    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} "
-    "in {course_name}. Cover the key concepts, why they matter for the AP exam, "
-    "and give a clear explanation suitable for a student seeing this for the first time. "
-    "Use markdown formatting with ## headers (one per major concept), bullet points, and examples.\n\n"
+    "You are an expert AP Computer Science tutor. Write a THOROUGH, DETAILED, LESSON-QUALITY "
+    "step-by-step explanation of '{topic_title}' (Topic {topic_number}) from "
+    "Unit {unit_number}: {unit_title} in {course_name}.\n\n"
+
+    "DEPTH REQUIREMENTS — every ## section MUST contain ALL of the following:\n"
+    "1. A clear conceptual explanation in 2–4 paragraphs (not just 1 sentence). "
+    "Explain the WHY behind the concept, not just the WHAT.\n"
+    "2. At least one annotated code example with comments explaining each line.\n"
+    "3. A step-by-step trace or walkthrough showing what happens when the code runs "
+    "(e.g. 'After line 3, x = 5 because ...').\n"
+    "4. Common mistakes or misconceptions students have with this concept, and how to avoid them.\n"
+    "5. Connection to the AP exam: how this concept is tested (MCQ trap answers, FRQ expectations).\n\n"
+
+    "STRUCTURE:\n"
+    "- Use ## headers, one per major sub-concept (aim for 5–8 sections total).\n"
+    "- Use bullet points and **bold** for key terms on first use.\n"
+    "- Use ```java code blocks for all code.\n"
+    "- Do NOT write superficial one-liner explanations. Each section should be meaty enough "
+    "that a student who has never seen this concept before fully understands it.\n\n"
+
     "IMPORTANT — Interactive Visualizations:\n"
-    "When explaining a concept that can be visualized with an animation, insert a marker "
-    "on its own line immediately after the explanation paragraph. The marker format is:\n"
+    "When explaining a concept that can be visualized, insert a marker on its own line "
+    "immediately after the explanation paragraph:\n"
     "[VISUALIZE:type]\n\n"
-    "Available visualization types:\n"
-    "- bubble_sort, selection_sort, insertion_sort, merge_sort — sorting algorithm step-by-step\n"
-    "- binary_search, linear_search — search algorithm walkthrough\n"
-    "- stack — push/pop/peek operations (LIFO)\n"
-    "- queue — enqueue/dequeue operations (FIFO)\n"
-    "- linked_list — add/remove/traverse operations\n"
-    "- arraylist — add/get/set/remove with shifting\n"
-    "- recursion — call stack build-up and unwinding (factorial)\n"
-    "- tree_traversal — BST in-order traversal\n\n"
-    "Place the marker RIGHT AFTER the paragraph that explains that concept, so the "
-    "visualization appears inline next to its explanation. Only use markers for concepts "
-    "that are directly relevant to the topic. Each concept should have its own ## section "
-    "with explanation followed by its visualizer.\n\n"
-    "Example:\n"
+    "Available types:\n"
+    "- bubble_sort, selection_sort, insertion_sort, merge_sort\n"
+    "- binary_search, linear_search\n"
+    "- stack, queue, linked_list, arraylist\n"
+    "- recursion, tree_traversal\n\n"
+    "Place the marker RIGHT AFTER the paragraph that explains that concept. "
+    "Only use markers for directly relevant concepts.\n\n"
+    "Example section format:\n"
     "## Bubble Sort\n"
-    "Bubble sort repeatedly steps through the list, compares adjacent elements, and swaps them if they are in the wrong order...\n\n"
+    "Bubble sort is a simple comparison-based algorithm that works by repeatedly stepping "
+    "through the list and swapping adjacent elements that are in the wrong order. "
+    "The name comes from the way larger elements 'bubble up' to the end of the list with each pass...\n\n"
     "[VISUALIZE:bubble_sort]\n\n"
-    "## Selection Sort\n"
-    "Selection sort divides the input list into a sorted and unsorted region...\n\n"
-    "[VISUALIZE:selection_sort]"
+    "**Step-by-step trace** for array [5, 3, 8, 1]:\n"
+    "- Pass 1: Compare 5 and 3 → swap → [3, 5, 8, 1]. Compare 5 and 8 → no swap. "
+    "Compare 8 and 1 → swap → [3, 5, 1, 8] ...\n\n"
+    "**Common mistake:** Students often forget that after each full pass, one more element "
+    "is in its final position, so the inner loop bound can shrink ..."
 )
 
 _PROMPT_MCQ = (
@@ -592,8 +605,10 @@ _PROMPT_MCQ = (
     '  "category": "The AP CSA concept category tested, e.g. Methods, ArrayList, 2D Array, Recursion, Inheritance, Polymorphism"\n'
     '}}\n\n'
     "Make it representative of what students would see on the AP exam. "
-    "The explanation should cover why the correct answer is right AND why each "
-    "incorrect answer is wrong.{variation_hint}"
+    "The explanation field MUST: (1) clearly explain why the correct answer is right with "
+    "a step-by-step justification, (2) explain why EACH incorrect option is wrong using "
+    "the exact label format 'Option A:', 'Option B:', 'Option C:', 'Option D:' so each "
+    "option gets its own paragraph. Do not skip any option.{variation_hint}"
 )
 
 _PROMPT_FRQ = (
@@ -633,11 +648,18 @@ _PROMPT_MISTAKES = (
 # ── Custom course prompt variants (non-AP) ──
 
 _PROMPT_INTRO_CUSTOM = (
-    "Provide a comprehensive introduction to the topic '{topic_title}' "
-    "(Topic {topic_number}) from Unit {unit_number}: {unit_title} "
-    "in {course_name}. Cover the key concepts, explain them clearly for a student "
-    "seeing this for the first time, and include worked examples where appropriate. "
-    "Use markdown formatting with ## headers, bullet points, and examples."
+    "You are an expert tutor. Write a THOROUGH, DETAILED, LESSON-QUALITY step-by-step "
+    "explanation of '{topic_title}' (Topic {topic_number}) from "
+    "Unit {unit_number}: {unit_title} in {course_name}.\n\n"
+    "DEPTH REQUIREMENTS — every ## section MUST include:\n"
+    "1. A conceptual explanation in 2–4 paragraphs explaining the WHY, not just the WHAT.\n"
+    "2. At least one worked example with full solution steps shown.\n"
+    "3. A step-by-step trace or walkthrough of the example.\n"
+    "4. Common mistakes or misconceptions and how to avoid them.\n\n"
+    "STRUCTURE: Use ## headers (one per sub-concept, aim for 5–8 sections), "
+    "bullet points, and **bold** for key terms. "
+    "Do NOT write superficial one-liner explanations — each section must be thorough enough "
+    "that a student seeing this for the first time fully understands it."
 )
 
 _PROMPT_MCQ_CUSTOM = (
