@@ -222,10 +222,9 @@ async def run(fix: bool, table: str, limit: int):
                     logger.warning(f"  CORRECTED exam MCQ {eq.id[:8]}: {old_ans} → {new_ans}")
                     if fix:
                         eq.question_data = json.dumps(fixed_qdata)
-                        # Also fix the student's score if they already answered
-                        if eq.student_answer is not None:
-                            eq.is_correct = (eq.student_answer == new_ans)
-                            eq.score = 1.0 if eq.is_correct else 0.0
+                        # NOTE: we intentionally do NOT retroactively change
+                        # student answers or scores — students answered based on
+                        # what the system showed them and should not be penalised.
                 else:
                     logger.info(f"  OK exam MCQ {eq.id[:8]}: {qdata.get('correct','?')}")
 
