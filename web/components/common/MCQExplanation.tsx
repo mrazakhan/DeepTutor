@@ -35,8 +35,9 @@ function parseOptionSections(
   optionKeys: string[]
 ): Record<string, string> {
   const result: Record<string, string> = {};
+  // Matches: "Option A:", "A.", "A)", "(A)", "**A**", "A -", "A –", "**Option A**:", etc.
   const pattern = new RegExp(
-    `(?:Option\\s+|\\*{0,2})([${optionKeys.join("")}])(?:\\*{0,2})(?:[.):)]|\\s*[-–—])\\s*`,
+    `(?:Option\\s+|\\*{0,2}\\(?)?([${optionKeys.join("")}])\\)?(?:\\*{0,2})(?:\\s*[.):,]|\\s*[-–—])\\s*`,
     "gi"
   );
 
@@ -53,7 +54,7 @@ function parseOptionSections(
     const body = chunk
       .replace(
         new RegExp(
-          `^(?:Option\\s+)?\\*{0,2}${letter}\\*{0,2}(?:[.):)]|\\s*[-–—])?\\s*`,
+          `^(?:Option\\s+)?\\*{0,2}\\(?${letter}\\)?\\*{0,2}(?:\\s*[.):,]|\\s*[-–—])?\\s*`,
           "i"
         ),
         ""
@@ -142,7 +143,8 @@ export default function MCQExplanation({
   const currentKey = orderedKeys[cardIndex];
   const isCurrentCorrect = currentKey === correctAnswer;
   const isCurrentSelected = currentKey === selectedAnswer;
-  const cardExplanation = perOption[currentKey] || (cardIndex === 0 ? preamble : "");
+  // Always fall back to the full explanation so no card is ever empty
+  const cardExplanation = perOption[currentKey] || explanation;
 
   // Colour tokens per card state
   const headerBg = isCurrentCorrect
