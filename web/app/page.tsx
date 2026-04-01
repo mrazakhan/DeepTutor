@@ -107,13 +107,16 @@ export default function HomePage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch(apiUrl("/api/v1/courses/list"));
+        // Always send auth token so the backend can include the user's own
+        // unapproved custom courses (e.g. Algebra II) in the response.
+        const token = localStorage.getItem("deeptutor_token");
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await fetch(apiUrl("/api/v1/courses/list"), { headers: authHeaders });
         const data: CourseListItem[] = await res.json();
         setCourses(Array.isArray(data) ? data : []);
 
         if (user) {
-          const token = localStorage.getItem("deeptutor_token");
-          const headers = { Authorization: `Bearer ${token}` };
+          const headers = authHeaders as Record<string, string>;
 
           // Fetch favorites
           try {
@@ -191,6 +194,34 @@ export default function HomePage() {
   // Split courses into favorited and rest
   const favoritedCourses = courses.filter((c) => favorites.has(c.id));
   const otherCourses = courses.filter((c) => !favorites.has(c.id));
+
+  // Desired ordering within each subject group (code-based, progression order)
+  const COURSE_PRIORITY: Record<string, string[]> = {
+    computer_science: ["AP_CSP", "AP_CSA"], // CSP is introductory, CSA is advanced
+    math: ["AP_PRECALC", "AP_CALC_AB", "AP_CALC_BC", "AP_STATS"],
+    science: ["AP_BIO", "AP_CHEM", "AP_PHYS1", "AP_PHYS2", "AP_PHYSC_MECH", "AP_PHYSC_EM", "AP_ENV_SCI"],
+  };
+
+  /** Sort a group's courses by the known progression order, then alphabetically */
+  function sortGroupCourses(area: string, list: CourseListItem[]): CourseListItem[] {
+    const priority = COURSE_PRIORITY[area] || [];
+    return [...list].sort((a, b) => {
+      const ai = priority.indexOf(a.code);
+      const bi = priority.indexOf(b.code);
+      if (ai !== -1 && bi !== -1) return ai - bi; // both known
+      if (ai !== -1) return -1;                    // a is known, b is not → a first
+      if (bi !== -1) return 1;                     // b is known, a is not → b first
+      return a.name.localeCompare(b.name);          // both unknown → alphabetical
+    });
+  }
+
+  /** Determine display group for a course — use subject_area directly so
+   *  user-added courses appear in the right path (math, science, etc.) */
+  function courseGroup(c: CourseListItem): string {
+    const area = c.subject_area;
+    if (area === "computer_science" || area === "math" || area === "science") return area;
+    return "custom"; // unknown / missing subject_area
+  }
 
   function renderCourseCard(course: CourseListItem) {
     const stats = getCourseStats(course.id);
@@ -282,8 +313,11 @@ export default function HomePage() {
       custom: { label: "Custom", courses: [] },
     };
     for (const c of courses) {
-      const area = c.code.startsWith("CUSTOM_") ? "custom" : (c.subject_area || "custom");
+      const area = courseGroup(c);
       (groups[area] || groups.custom).courses.push(c);
+    }
+    for (const [key, g] of Object.entries(groups)) {
+      g.courses = sortGroupCourses(key, g.courses);
     }
     const subjectGradients: Record<string, string> = {
       computer_science: "stroke-violet-500",
@@ -355,8 +389,12 @@ export default function HomePage() {
       custom: { label: "Custom Courses", icon: BookOpen, courses: [] },
     };
     for (const c of courses) {
-      const area = c.code.startsWith("CUSTOM_") ? "custom" : (c.subject_area || "custom");
+      const area = courseGroup(c);
       (groups[area] || groups.custom).courses.push(c);
+    }
+    // Sort each group in progression order
+    for (const [key, g] of Object.entries(groups)) {
+      g.courses = sortGroupCourses(key, g.courses);
     }
     const lineGradients: Record<string, string> = {
       computer_science: "from-violet-400 to-violet-600",
@@ -561,7 +599,7 @@ export default function HomePage() {
                       custom: { label: "Custom Courses", icon: BookOpen, courses: [] },
                     };
                     for (const c of otherCourses) {
-                      const area = c.code.startsWith("CUSTOM_") ? "custom" : (c.subject_area || "custom");
+                      const area = courseGroup(c);
                       if (groups[area]) {
                         groups[area].courses.push(c);
                       } else {
