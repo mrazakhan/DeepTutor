@@ -146,9 +146,12 @@ async def login(body: LoginRequest):
         if not getattr(user, "enabled", True):
             raise HTTPException(status_code=403, detail="Account disabled. Contact your administrator.")
 
-        # Track last login time
-        user.last_login_at = datetime.now(timezone.utc)
-        db.commit()
+        # Track last login time (non-fatal if DB is temporarily locked)
+        try:
+            user.last_login_at = datetime.now(timezone.utc)
+            db.commit()
+        except Exception:
+            db.rollback()
 
         token = secrets.token_urlsafe(32)
         _tokens[token] = {
