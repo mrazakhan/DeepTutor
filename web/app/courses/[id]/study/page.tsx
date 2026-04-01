@@ -294,6 +294,8 @@ export default function StudyPage({
   const pendingInlineEditorRef = useRef(false);
   // Step-by-step intro viewer
   const [activeIntroContent, setActiveIntroContent] = useState<string | null>(null);
+  // Card-based mistakes viewer
+  const [activeMistakesContent, setActiveMistakesContent] = useState<string | null>(null);
   // Cache AI responses — track which suggestion key triggered the current WS request
   const pendingSuggestionKeyRef = useRef<SuggestionKey | null>(null);
   // Assessment / progress tracking
@@ -624,8 +626,9 @@ export default function StudyPage({
     if (textKeys[key]) {
       setMessages((prev) => [...prev, { role: "user", content: label }]);
       if (key === "intro") {
-        // Show step-by-step viewer for intro content
         setActiveIntroContent(textKeys[key]!);
+      } else if (key === "mistakes") {
+        setActiveMistakesContent(textKeys[key]!);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -1073,9 +1076,11 @@ export default function StudyPage({
                 } as PreloadedContent));
               })
               .catch(console.error);
-            // Show step-by-step viewer for intro responses
+            // Show card-based viewer for intro and mistakes responses
             if (cacheKey === "intro") {
               setActiveIntroContent(data.content);
+            } else if (cacheKey === "mistakes") {
+              setActiveMistakesContent(data.content);
             }
           } else {
             pendingSuggestionKeyRef.current = null;
@@ -1678,12 +1683,33 @@ export default function StudyPage({
                 content={activeIntroContent}
                 topicTitle={topic?.title}
                 onDone={() => {
-                  // Push full content into messages for chat history, then clear viewer
                   setMessages((prev) => [
                     ...prev,
                     { role: "assistant", content: activeIntroContent },
                   ]);
                   setActiveIntroContent(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Card-based common mistakes viewer */}
+        {activeMistakesContent && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot className="w-4 h-4 text-red-500" />
+            </div>
+            <div className="flex-1 max-w-[85%] rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm leading-relaxed">
+              <StepByStepViewer
+                content={activeMistakesContent}
+                topicTitle={topic?.title}
+                onDone={() => {
+                  setMessages((prev) => [
+                    ...prev,
+                    { role: "assistant", content: activeMistakesContent },
+                  ]);
+                  setActiveMistakesContent(null);
                 }}
               />
             </div>
