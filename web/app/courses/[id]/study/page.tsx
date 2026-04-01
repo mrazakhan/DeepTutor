@@ -1967,13 +1967,13 @@ export default function StudyPage({
           </div>
         )}
 
-        {/* Interactive MCQ — single-card view with back/forward navigation */}
+        {/* Interactive MCQ — split-pane view: question left, explanation right */}
         {activeMCQ && !assessmentMode && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-blue-500/20">
               <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className="max-w-[85%] rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm">
+            <div className={`rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm transition-all duration-300 ${showMCQExplanation ? "flex-1" : "max-w-[85%]"}`}>
               {/* Header with progress + navigation dots */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -2025,239 +2025,246 @@ export default function StudyPage({
                 </div>
               )}
 
-              {/* Question */}
-              <div className="prose prose-sm dark:prose-invert max-w-none mb-5">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={{
-                    code: ({ className, children, ...props }: any) => {
-                      const isBlock = !!className?.startsWith("language-") || String(children).includes("\n");
-                      if (!isBlock) {
-                        return <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs font-mono" {...props}>{children}</code>;
-                      }
-                      const lines = String(children).replace(/\n$/, "").split("\n");
-                      return (
-                        <div className="my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
-                          <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-xs font-mono leading-relaxed">
-                              <tbody>
-                                {lines.map((line, i) => (
-                                  <tr key={i} className="hover:bg-white/5 transition-colors">
-                                    <td className="select-none text-right pr-3 pl-3 py-px w-8 border-r border-slate-700/60 text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
-                                    <td className="pl-4 pr-4 py-px text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    },
-                    pre: ({ children }: any) => <>{children}</>,
-                  }}
-                >
-                  {processLatexContent(activeMCQ.question)}
-                </ReactMarkdown>
-              </div>
+              {/* Body: left column (question + options + buttons) | right column (explanation) */}
+              <div className={`${showMCQExplanation ? "flex gap-6" : ""}`}>
 
-              {/* Answer options */}
-              <div className="space-y-2.5 mb-5">
-                {Object.entries(activeMCQ.options).map(([letter, text]) => {
-                  const isSelected = selectedAnswer === letter;
-                  const isSubmitted = showMCQExplanation;
-                  const isCorrect = letter === activeMCQ.correct;
-                  const letterColors: Record<string, string> = {
-                    A: "from-blue-500 to-blue-600",
-                    B: "from-violet-500 to-violet-600",
-                    C: "from-emerald-500 to-emerald-600",
-                    D: "from-amber-500 to-amber-600",
-                  };
-
-                  let btnClass = "border-slate-200 dark:border-slate-600/50 hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md hover:scale-[1.005] bg-slate-50/50 dark:bg-slate-700/30";
-                  let letterBg = "from-slate-400 to-slate-500 dark:from-slate-500 dark:to-slate-600 group-hover:from-blue-400 group-hover:to-blue-500";
-
-                  if (isSubmitted && isCorrect) {
-                    btnClass = "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-md shadow-emerald-500/10 scale-[1.01]";
-                    letterBg = "from-emerald-500 to-emerald-600";
-                  } else if (isSubmitted && isSelected && !isCorrect) {
-                    btnClass = "border-red-400 bg-red-50 dark:bg-red-900/20 shadow-md shadow-red-500/10";
-                    letterBg = "from-red-500 to-red-600";
-                  } else if (isSelected && !isSubmitted) {
-                    btnClass = "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md shadow-blue-500/10 scale-[1.01]";
-                    letterBg = letterColors[letter] || "from-blue-500 to-blue-600";
-                  }
-
-                  return (
-                    <button
-                      key={letter}
-                      onClick={() => !showMCQExplanation && handleAnswerSelect(letter)}
-                      disabled={showMCQExplanation}
-                      className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm transition-all duration-200 group ${btnClass}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br ${letterBg} transition-all shadow-sm`}>
-                          {letter}
-                        </span>
-                        <span className="flex-1 pt-0.5">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                            components={{ p: ({ children }) => <span>{children}</span> }}
-                          >
-                            {processLatexContent(text)}
-                          </ReactMarkdown>
-                        </span>
-                        {isSubmitted && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />}
-                        {isSubmitted && isSelected && !isCorrect && <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Explanation (inline after submit) */}
-              {showMCQExplanation && (
-                <div className="mb-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                  <MCQExplanation
-                    explanation={activeMCQ.explanation}
-                    correctAnswer={activeMCQ.correct}
-                    selectedAnswer={selectedAnswer || ""}
-                    options={activeMCQ.options}
-                  />
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {!showMCQExplanation ? (
-                  <>
-                    <button
-                      onClick={chatMcqMode ? handleSubmitChatMCQ : handleSubmitMCQ}
-                      disabled={!selectedAnswer}
-                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 dark:disabled:from-slate-600 dark:disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-500/20 disabled:shadow-none"
-                    >
-                      {t("Submit Answer")}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {/* Back button */}
-                    {mcqIndex > 0 && (
-                      <button
-                        onClick={() => {
-                          const prevIdx = mcqIndex - 1;
-                          setMcqIndex(prevIdx);
-                          setActiveMCQ(sessionMcqs[prevIdx]);
-                          const prevAns = mcqAnswers[prevIdx];
-                          if (prevAns) {
-                            setSelectedAnswer(prevAns.selected);
-                            setShowMCQExplanation(true);
-                          } else {
-                            setSelectedAnswer(null);
-                            setShowMCQExplanation(false);
+                {/* LEFT: question + options + action buttons */}
+                <div className={showMCQExplanation ? "flex-1 min-w-0 flex flex-col" : ""}>
+                  {/* Question */}
+                  <div className="prose prose-sm dark:prose-invert max-w-none mb-5">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{
+                        code: ({ className, children, ...props }: any) => {
+                          const isBlock = !!className?.startsWith("language-") || String(children).includes("\n");
+                          if (!isBlock) {
+                            return <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs font-mono" {...props}>{children}</code>;
                           }
-                        }}
-                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                      >
-                        ← {t("Previous")}
-                      </button>
-                    )}
-                    {/* Forward / Next button */}
-                    {mcqIndex < sessionMcqs.length - 1 ? (
-                      <button
-                        onClick={() => {
-                          const nextIdx = mcqIndex + 1;
-                          setMcqIndex(nextIdx);
-                          setActiveMCQ(sessionMcqs[nextIdx]);
-                          const nextAns = mcqAnswers[nextIdx];
-                          if (nextAns) {
-                            setSelectedAnswer(nextAns.selected);
-                            setShowMCQExplanation(true);
-                          } else {
-                            setSelectedAnswer(null);
-                            setShowMCQExplanation(false);
-                          }
-                        }}
-                        className="px-6 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md shadow-blue-500/20"
-                      >
-                        {t("Next")} →
-                      </button>
-                    ) : (
-                      /* End-of-session actions */
-                      <>
-                        {/* Load More MCQs */}
-                        {preloadedContent?.practice_mcq && (() => {
-                          const allValid = (preloadedContent.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
-                          const seenQuestions = new Set(sessionMcqs.map((q: MCQuestion) => q.question));
-                          const unseen = allValid.filter((q: MCQuestion) => !seenQuestions.has(q.question));
-                          if (unseen.length === 0) return null;
+                          const lines = String(children).replace(/\n$/, "").split("\n");
                           return (
-                            <button
-                              onClick={() => {
-                                const nextBatch = shuffleArray(unseen).slice(0, MCQ_SESSION_SIZE);
-                                setSessionMcqs(prev => [...prev, ...nextBatch]);
-                                setMcqIndex(sessionMcqs.length);
-                                setActiveMCQ(nextBatch[0]);
-                                setSelectedAnswer(null);
-                                setShowMCQExplanation(false);
-                              }}
-                              className="px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-sm hover:bg-blue-100 transition-colors"
-                            >
-                              Load More ({unseen.length})
-                            </button>
+                            <div className="my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+                              <div className="overflow-x-auto">
+                                <table className="w-full border-collapse text-xs font-mono leading-relaxed">
+                                  <tbody>
+                                    {lines.map((line, i) => (
+                                      <tr key={i} className="hover:bg-white/5 transition-colors">
+                                        <td className="select-none text-right pr-3 pl-3 py-px w-8 border-r border-slate-700/60 text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
+                                        <td className="pl-4 pr-4 py-px text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
                           );
-                        })()}
-                        {/* Take Assessment */}
-                        {preloadedContent?.practice_mcq && (
-                          <button
-                            onClick={() => {
-                              setActiveMCQ(null);
-                              setShowMCQExplanation(false);
-                              setSelectedAnswer(null);
-                              setMcqAnswers({});
-                              const allMcqs = (preloadedContent.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
-                              if (allMcqs.length > 0) {
-                                setAssessmentQuestions(shuffleArray([...allMcqs]));
-                                setAssessmentIndex(0);
-                                setAssessmentScore({ correct: 0, total: 0 });
-                                setAssessmentMode(true);
-                              }
-                            }}
-                            className="px-4 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 text-sm hover:bg-green-100 transition-colors inline-flex items-center gap-1.5"
-                          >
-                            <GraduationCap className="w-3.5 h-3.5" />
-                            Assessment
-                          </button>
-                        )}
-                        {/* Back to study */}
+                        },
+                        pre: ({ children }: any) => <>{children}</>,
+                      }}
+                    >
+                      {processLatexContent(activeMCQ.question)}
+                    </ReactMarkdown>
+                  </div>
+
+                  {/* Answer options */}
+                  <div className="space-y-2.5 mb-5">
+                    {Object.entries(activeMCQ.options).map(([letter, text]) => {
+                      const isSelected = selectedAnswer === letter;
+                      const isSubmitted = showMCQExplanation;
+                      const isCorrect = letter === activeMCQ.correct;
+                      const letterColors: Record<string, string> = {
+                        A: "from-blue-500 to-blue-600",
+                        B: "from-violet-500 to-violet-600",
+                        C: "from-emerald-500 to-emerald-600",
+                        D: "from-amber-500 to-amber-600",
+                      };
+
+                      let btnClass = "border-slate-200 dark:border-slate-600/50 hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md hover:scale-[1.005] bg-slate-50/50 dark:bg-slate-700/30";
+                      let letterBg = "from-slate-400 to-slate-500 dark:from-slate-500 dark:to-slate-600 group-hover:from-blue-400 group-hover:to-blue-500";
+
+                      if (isSubmitted && isCorrect) {
+                        btnClass = "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-md shadow-emerald-500/10 scale-[1.01]";
+                        letterBg = "from-emerald-500 to-emerald-600";
+                      } else if (isSubmitted && isSelected && !isCorrect) {
+                        btnClass = "border-red-400 bg-red-50 dark:bg-red-900/20 shadow-md shadow-red-500/10";
+                        letterBg = "from-red-500 to-red-600";
+                      } else if (isSelected && !isSubmitted) {
+                        btnClass = "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md shadow-blue-500/10 scale-[1.01]";
+                        letterBg = letterColors[letter] || "from-blue-500 to-blue-600";
+                      }
+
+                      return (
                         <button
-                          onClick={() => {
-                            setActiveMCQ(null);
-                            setSessionMcqs([]);
-                            setMcqIndex(0);
-                            setSelectedAnswer(null);
-                            setShowMCQExplanation(false);
-                            setMcqAnswers({});
-                          }}
-                          className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                          key={letter}
+                          onClick={() => !showMCQExplanation && handleAnswerSelect(letter)}
+                          disabled={showMCQExplanation}
+                          className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm transition-all duration-200 group ${btnClass}`}
                         >
-                          ← {t("Study Options")}
+                          <div className="flex items-start gap-3">
+                            <span className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br ${letterBg} transition-all shadow-sm`}>
+                              {letter}
+                            </span>
+                            <span className="flex-1 pt-0.5">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm, remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
+                                components={{ p: ({ children }) => <span>{children}</span> }}
+                              >
+                                {processLatexContent(text)}
+                              </ReactMarkdown>
+                            </span>
+                            {isSubmitted && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />}
+                            {isSubmitted && isSelected && !isCorrect && <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-2 flex-wrap mt-auto">
+                    {!showMCQExplanation ? (
+                      <>
+                        <button
+                          onClick={chatMcqMode ? handleSubmitChatMCQ : handleSubmitMCQ}
+                          disabled={!selectedAnswer}
+                          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 dark:disabled:from-slate-600 dark:disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-500/20 disabled:shadow-none"
+                        >
+                          {t("Submit Answer")}
                         </button>
                       </>
+                    ) : (
+                      <>
+                        {/* Back button */}
+                        {mcqIndex > 0 && (
+                          <button
+                            onClick={() => {
+                              const prevIdx = mcqIndex - 1;
+                              setMcqIndex(prevIdx);
+                              setActiveMCQ(sessionMcqs[prevIdx]);
+                              const prevAns = mcqAnswers[prevIdx];
+                              if (prevAns) {
+                                setSelectedAnswer(prevAns.selected);
+                                setShowMCQExplanation(true);
+                              } else {
+                                setSelectedAnswer(null);
+                                setShowMCQExplanation(false);
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                          >
+                            ← {t("Previous")}
+                          </button>
+                        )}
+                        {/* Forward / Next button */}
+                        {mcqIndex < sessionMcqs.length - 1 ? (
+                          <button
+                            onClick={() => {
+                              const nextIdx = mcqIndex + 1;
+                              setMcqIndex(nextIdx);
+                              setActiveMCQ(sessionMcqs[nextIdx]);
+                              const nextAns = mcqAnswers[nextIdx];
+                              if (nextAns) {
+                                setSelectedAnswer(nextAns.selected);
+                                setShowMCQExplanation(true);
+                              } else {
+                                setSelectedAnswer(null);
+                                setShowMCQExplanation(false);
+                              }
+                            }}
+                            className="px-6 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md shadow-blue-500/20"
+                          >
+                            {t("Next")} →
+                          </button>
+                        ) : (
+                          /* End-of-session actions */
+                          <>
+                            {/* Load More MCQs */}
+                            {preloadedContent?.practice_mcq && (() => {
+                              const allValid = (preloadedContent.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+                              const seenQuestions = new Set(sessionMcqs.map((q: MCQuestion) => q.question));
+                              const unseen = allValid.filter((q: MCQuestion) => !seenQuestions.has(q.question));
+                              if (unseen.length === 0) return null;
+                              return (
+                                <button
+                                  onClick={() => {
+                                    const nextBatch = shuffleArray(unseen).slice(0, MCQ_SESSION_SIZE);
+                                    setSessionMcqs(prev => [...prev, ...nextBatch]);
+                                    setMcqIndex(sessionMcqs.length);
+                                    setActiveMCQ(nextBatch[0]);
+                                    setSelectedAnswer(null);
+                                    setShowMCQExplanation(false);
+                                  }}
+                                  className="px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-sm hover:bg-blue-100 transition-colors"
+                                >
+                                  Load More ({unseen.length})
+                                </button>
+                              );
+                            })()}
+                            {/* Take Assessment */}
+                            {preloadedContent?.practice_mcq && (
+                              <button
+                                onClick={() => {
+                                  setActiveMCQ(null);
+                                  setShowMCQExplanation(false);
+                                  setSelectedAnswer(null);
+                                  setMcqAnswers({});
+                                  const allMcqs = (preloadedContent.practice_mcq || []).filter((q: MCQuestion) => !q.raw_text);
+                                  if (allMcqs.length > 0) {
+                                    setAssessmentQuestions(shuffleArray([...allMcqs]));
+                                    setAssessmentIndex(0);
+                                    setAssessmentScore({ correct: 0, total: 0 });
+                                    setAssessmentMode(true);
+                                  }
+                                }}
+                                className="px-4 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 text-sm hover:bg-green-100 transition-colors inline-flex items-center gap-1.5"
+                              >
+                                <GraduationCap className="w-3.5 h-3.5" />
+                                Assessment
+                              </button>
+                            )}
+                            {/* Back to study */}
+                            <button
+                              onClick={() => {
+                                setActiveMCQ(null);
+                                setSessionMcqs([]);
+                                setMcqIndex(0);
+                                setSelectedAnswer(null);
+                                setShowMCQExplanation(false);
+                                setMcqAnswers({});
+                              }}
+                              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                            >
+                              ← {t("Study Options")}
+                            </button>
+                          </>
+                        )}
+                      </>
                     )}
-                  </>
+                  </div>
+
+                  {/* Trailing guidance text for chat-generated MCQs */}
+                  {chatMcqMode && chatMcqTrailing && (
+                    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 prose prose-sm dark:prose-invert max-w-none text-slate-500 dark:text-slate-400">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                        {processLatexContent(chatMcqTrailing)}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+
+                {/* RIGHT: explanation panel — appears after submitting */}
+                {showMCQExplanation && (
+                  <div className="w-80 xl:w-96 flex-shrink-0 border-l border-slate-200 dark:border-slate-700/60 pl-6 overflow-y-auto max-h-[600px]">
+                    <MCQExplanation
+                      explanation={activeMCQ.explanation}
+                      correctAnswer={activeMCQ.correct}
+                      selectedAnswer={selectedAnswer || ""}
+                      options={activeMCQ.options}
+                    />
+                  </div>
                 )}
               </div>
-
-              {/* Trailing guidance text for chat-generated MCQs */}
-              {chatMcqMode && chatMcqTrailing && (
-                <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 prose prose-sm dark:prose-invert max-w-none text-slate-500 dark:text-slate-400">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {processLatexContent(chatMcqTrailing)}
-                  </ReactMarkdown>
-                </div>
-              )}
             </div>
           </div>
         )}
