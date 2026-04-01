@@ -110,13 +110,13 @@ export default function HomePage() {
         // Always send auth token so the backend can include the user's own
         // unapproved custom courses (e.g. Algebra II) in the response.
         const token = localStorage.getItem("deeptutor_token");
-        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(apiUrl("/api/v1/courses/list"), { headers: authHeaders });
         const data: CourseListItem[] = await res.json();
         setCourses(Array.isArray(data) ? data : []);
 
         if (user) {
-          const headers = authHeaders as Record<string, string>;
+          const headers = authHeaders;
 
           // Fetch favorites
           try {
