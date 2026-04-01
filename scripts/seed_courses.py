@@ -1181,10 +1181,10 @@ def seed_test_users():
         for user_data in TEST_USERS:
             existing = db.query(User).filter(User.username == user_data["username"]).first()
             if existing:
-                existing.password_hash = _hash_password(user_data["password"])
+                # Do NOT reset password — only update display name and role
                 existing.display_name = user_data["display_name"]
                 existing.role = user_data["role"]
-                print(f"  Updated user: {existing.username} ({existing.role})")
+                print(f"  Exists (skipping password reset): {existing.username} ({existing.role})")
             else:
                 user = User(
                     username=user_data["username"],
