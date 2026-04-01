@@ -110,7 +110,7 @@ interface CourseRow {
   is_custom: boolean;
 }
 
-type Tab = "approvals" | "users" | "sessions" | "overview" | "usage" | "courses";
+type Tab = "approvals" | "users" | "sessions" | "overview" | "usage" | "courses" | "content";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -396,6 +396,7 @@ export default function AdminPage() {
     { id: "sessions", label: "Sessions", icon: Activity },
     { id: "overview", label: "Overview", icon: BarChart3 },
     { id: "courses", label: "Courses", icon: BookOpen },
+    { id: "content", label: "Content", icon: Zap },
   ];
 
   // Daily chart helpers
@@ -1073,6 +1074,10 @@ export default function AdminPage() {
           )}
 
           {/* ═══════════ Courses Tab ═══════════ */}
+          {tab === "content" && (
+            <ContentRefreshTab token={typeof window !== "undefined" ? localStorage.getItem("deeptutor_token") || "" : ""} />
+          )}
+
           {tab === "courses" && (
             <div>
               {coursesLoading ? (
@@ -1236,6 +1241,136 @@ export default function AdminPage() {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Content Refresh Tab
+// ---------------------------------------------------------------------------
+function ContentRefreshTab({ token }: { token: string }) {
+  const [keys, setKeys] = useState<string[]>(["exam", "mistakes"]);
+  const [delay, setDelay] = useState(2);
+  const [state, setState] = useState<any>(null);
+  const [polling, setPolling] = useState(false);
+
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+
+  async function fetchStatus() {
+    const r = await fetch(apiUrl("/api/v1/courses/admin/refresh-stale-content/status"), { headers });
+    if (r.ok) setState(await r.json());
+  }
+
+  async function startRefresh() {
+    const r = await fetch(apiUrl("/api/v1/courses/admin/refresh-stale-content"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ keys, delay_seconds: delay }),
+    });
+    if (r.ok) {
+      await fetchStatus();
+      setPolling(true);
+    }
+  }
+
+  useEffect(() => { fetchStatus(); }, []);
+
+  useEffect(() => {
+    if (!polling) return;
+    const id = setInterval(async () => {
+      await fetchStatus();
+      if (!state?.running) setPolling(false);
+    }, 3000);
+    return () => clearInterval(id);
+  }, [polling, state?.running]);
+
+  const toggleKey = (k: string) =>
+    setKeys((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
+
+  const pct = state?.total ? Math.round((state.done / state.total) * 100) : 0;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">Smart Content Refresh</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Detects stale content (below quality threshold) and regenerates only what's needed. Runs in the background.
+        </p>
+      </div>
+
+      {/* Config */}
+      <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Content keys to check</p>
+          <div className="flex gap-2 flex-wrap">
+            {["intro", "exam", "mistakes"].map((k) => (
+              <button
+                key={k}
+                onClick={() => toggleKey(k)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                  keys.includes(k)
+                    ? "bg-blue-500 text-white border-blue-500"
+                    : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-300"
+                }`}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-slate-600 dark:text-slate-400">Delay between topics (sec):</label>
+          <input
+            type="number" min={0.5} max={10} step={0.5} value={delay}
+            onChange={(e) => setDelay(Number(e.target.value))}
+            className="w-20 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-800 dark:text-slate-200"
+          />
+        </div>
+        <button
+          onClick={startRefresh}
+          disabled={state?.running || keys.length === 0}
+          className="px-5 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors flex items-center gap-2"
+        >
+          {state?.running ? <><Loader2 className="w-4 h-4 animate-spin" /> Running…</> : <><Zap className="w-4 h-4" /> Start Refresh</>}
+        </button>
+      </div>
+
+      {/* Status */}
+      {state && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              {state.running ? "Running…" : state.finished_at ? "Completed" : "Idle"}
+            </span>
+            <button onClick={fetchStatus} className="text-xs text-blue-500 hover:text-blue-600">Refresh</button>
+          </div>
+
+          {state.total > 0 && (
+            <>
+              <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2">
+                <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="flex gap-6 text-sm">
+                <span className="text-slate-500">{state.done}/{state.total} topics</span>
+                <span className="text-emerald-600 dark:text-emerald-400">↑ {state.regenerated} refreshed</span>
+                <span className="text-slate-400">⊘ {state.skipped} skipped</span>
+                {state.errors > 0 && <span className="text-red-500">✗ {state.errors} errors</span>}
+              </div>
+            </>
+          )}
+
+          {/* Log */}
+          {state.log?.length > 0 && (
+            <div className="bg-slate-900 rounded-lg p-3 max-h-48 overflow-y-auto">
+              {state.log.slice(-30).map((line: string, i: number) => (
+                <div key={i} className={`text-xs font-mono ${line.includes("✓") ? "text-emerald-400" : line.includes("✗") ? "text-red-400" : "text-slate-400"}`}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

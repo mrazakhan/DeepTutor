@@ -1421,3 +1421,196 @@ async def delete_user_upload(course_id: str, filename: str, request: Request):
         return {"message": f"Deleted {filename}"}
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Smart background content refresh
+# ---------------------------------------------------------------------------
+
+import asyncio
+
+# Global refresh state — survives the request but resets on container restart
+_refresh_state: dict = {
+    "running": False,
+    "total": 0,
+    "done": 0,
+    "regenerated": 0,
+    "skipped": 0,
+    "errors": 0,
+    "log": [],          # last 50 messages
+    "started_at": None,
+    "finished_at": None,
+}
+
+_STALE_THRESHOLDS = {
+    # key → minimum number of ## headings to be considered fresh
+    "intro":    5,
+    "exam":     4,   # new prompt targets 6; anything with <4 was old format
+    "mistakes": 4,   # new prompt targets 5–7; anything with <4 was old format
+}
+
+
+def _count_headings(text: str) -> int:
+    """Count ## headings in markdown text."""
+    return text.count("\n## ") + (1 if text.startswith("## ") else 0)
+
+
+def _is_stale(content_dict: dict, key: str) -> bool:
+    """Return True if this content key is missing or below quality threshold."""
+    val = content_dict.get(key)
+    if not val:
+        return True
+    threshold = _STALE_THRESHOLDS.get(key, 3)
+    return _count_headings(val) < threshold
+
+
+async def _refresh_worker(keys: list[str], course_id: str | None, delay: float):
+    """Background coroutine: scan all topics and regenerate stale keys."""
+    global _refresh_state
+    _refresh_state["running"] = True
+    _refresh_state["started_at"] = datetime.now(timezone.utc).isoformat()
+    _refresh_state["finished_at"] = None
+    _refresh_state["log"] = []
+
+    def _log(msg: str):
+        logger.info(f"[ContentRefresh] {msg}")
+        _refresh_state["log"].append(msg)
+        if len(_refresh_state["log"]) > 100:
+            _refresh_state["log"] = _refresh_state["log"][-100:]
+
+    try:
+        db = get_db()
+        try:
+            # Collect all (topic, unit, course, tc) tuples to process
+            query = db.query(TopicContent, Topic, Unit, Course).join(
+                Topic, TopicContent.topic_id == Topic.id
+            ).join(Unit, Topic.unit_id == Unit.id).join(Course, Unit.course_id == Course.id)
+            if course_id:
+                query = query.filter(Course.id == course_id)
+            rows = query.all()
+        finally:
+            db.close()
+
+        _refresh_state["total"] = len(rows)
+        _refresh_state["done"] = 0
+        _refresh_state["regenerated"] = 0
+        _refresh_state["skipped"] = 0
+        _refresh_state["errors"] = 0
+
+        _log(f"Scanning {len(rows)} topics for keys: {keys}")
+
+        for tc, topic, unit, course in rows:
+            content_dict = json.loads(tc.content)
+            stale_keys = [k for k in keys if _is_stale(content_dict, k)]
+
+            if not stale_keys:
+                _refresh_state["done"] += 1
+                _refresh_state["skipped"] += 1
+                continue
+
+            _log(f"Refreshing {topic.topic_number} '{topic.title}' — stale: {stale_keys}")
+
+            try:
+                agent = _init_tutor_agent(course)
+                is_custom = _is_custom_course(course.code)
+                prompt_mistakes = _PROMPT_MISTAKES_CUSTOM if is_custom else _PROMPT_MISTAKES
+
+                fmt = {
+                    "topic_title": topic.title,
+                    "topic_number": topic.topic_number,
+                    "unit_number": unit.unit_number,
+                    "unit_title": unit.title,
+                    "course_name": course.name,
+                }
+
+                async def _gen(prompt: str) -> str:
+                    result = await agent.process(
+                        message=prompt,
+                        history=[],
+                        topic_title=topic.title,
+                        unit_title=unit.title,
+                        unit_number=unit.unit_number,
+                        stream=False,
+                    )
+                    return result.get("response", "")
+
+                for key in stale_keys:
+                    if key == "intro":
+                        prompt = (_PROMPT_INTRO_CUSTOM if is_custom else _PROMPT_INTRO).format(**fmt)
+                    elif key == "exam":
+                        prompt = _PROMPT_EXAM.format(**fmt)
+                    elif key == "mistakes":
+                        prompt = prompt_mistakes.format(**fmt)
+                    else:
+                        continue
+
+                    new_text = await _gen(prompt)
+                    if new_text:
+                        content_dict[key] = new_text
+
+                # Persist
+                db2 = get_db()
+                try:
+                    tc2 = db2.query(TopicContent).filter(TopicContent.topic_id == topic.id).first()
+                    if tc2:
+                        tc2.content = json.dumps(content_dict)
+                        tc2.updated_at = datetime.now(timezone.utc)
+                        db2.commit()
+                        _refresh_state["regenerated"] += 1
+                        _log(f"  ✓ Saved {stale_keys} for '{topic.title}'")
+                finally:
+                    db2.close()
+
+            except Exception as e:
+                _refresh_state["errors"] += 1
+                _log(f"  ✗ Error on '{topic.title}': {e}")
+
+            _refresh_state["done"] += 1
+            await asyncio.sleep(delay)
+
+    except Exception as e:
+        _log(f"Fatal error: {e}")
+    finally:
+        _refresh_state["running"] = False
+        _refresh_state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _log(f"Done — regenerated {_refresh_state['regenerated']}, skipped {_refresh_state['skipped']}, errors {_refresh_state['errors']}")
+
+
+class RefreshRequest(BaseModel):
+    keys: list[str] = ["exam", "mistakes"]   # which keys to check/refresh
+    course_id: str | None = None             # None = all courses
+    delay_seconds: float = 2.0              # pause between topics to avoid rate limits
+
+
+@router.post("/admin/refresh-stale-content")
+async def start_content_refresh(body: RefreshRequest, request: Request, background_tasks: BackgroundTasks):
+    """Scan all topics and regenerate content that is stale (below quality threshold).
+    Runs entirely in the background. Poll /admin/refresh-stale-content/status for progress.
+    Admin only.
+    """
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    if _refresh_state["running"]:
+        return {"status": "already_running", "state": _refresh_state}
+
+    valid_keys = {"intro", "exam", "mistakes"}
+    keys = [k for k in body.keys if k in valid_keys]
+    if not keys:
+        raise HTTPException(status_code=400, detail=f"No valid keys. Choose from: {valid_keys}")
+
+    background_tasks.add_task(_refresh_worker, keys, body.course_id, body.delay_seconds)
+    return {"status": "started", "keys": keys, "course_id": body.course_id}
+
+
+@router.get("/admin/refresh-stale-content/status")
+async def get_refresh_status(request: Request):
+    """Poll the background content refresh progress. Admin only."""
+    from src.api.routers.auth import _get_current_user
+    user = _get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    return _refresh_state
