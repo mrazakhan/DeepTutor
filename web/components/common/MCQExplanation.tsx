@@ -86,9 +86,9 @@ function MD({ children }: { children: string }) {
           }
           const lines = String(c).replace(/\n$/, "").split("\n");
           return (
-            <div className="my-2 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+            <div className="not-prose my-2 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-xs font-mono leading-relaxed">
+                <table className="w-full border-collapse text-xs font-mono leading-normal">
                   <tbody>
                     {lines.map((line, i) => (
                       <tr key={i} className="hover:bg-white/5 transition-colors">

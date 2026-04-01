@@ -2047,9 +2047,9 @@ export default function StudyPage({
                           }
                           const lines = String(children).replace(/\n$/, "").split("\n");
                           return (
-                            <div className="my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+                            <div className="not-prose my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
                               <div className="overflow-x-auto">
-                                <table className="w-full border-collapse text-xs font-mono leading-relaxed">
+                                <table className="w-full border-collapse text-xs font-mono leading-normal">
                                   <tbody>
                                     {lines.map((line, i) => (
                                       <tr key={i} className="hover:bg-white/5 transition-colors">

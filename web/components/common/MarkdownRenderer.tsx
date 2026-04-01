@@ -92,9 +92,9 @@ export default function MarkdownRenderer({
       const codeString = String(children).replace(/\n$/, "");
       const lines = codeString.split("\n");
       return (
-        <div className="my-4 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900 dark:bg-slate-950">
+        <div className="not-prose my-4 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900 dark:bg-slate-950">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm font-mono leading-relaxed">
+            <table className="w-full border-collapse text-sm font-mono leading-normal">
               <tbody>
                 {lines.map((line, i) => (
                   <tr key={i} className="hover:bg-white/5 transition-colors">
