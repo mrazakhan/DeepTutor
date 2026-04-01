@@ -29,6 +29,8 @@ import {
   AlertTriangle,
   Pen,
   Type,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import ProficiencyBreakdown, { type ProficiencyDimension } from "@/components/ProficiencyBreakdown";
@@ -271,6 +273,7 @@ export default function StudyPage({
   const evalScrollRef = useRef<HTMLDivElement>(null);
   const [frqEvalCode, setFrqEvalCode] = useState(""); // snapshot of code at eval time
   const [revealedIssues, setRevealedIssues] = useState(0); // progressive reveal count
+  const [issueCardIndex, setIssueCardIndex] = useState(0); // which issue card is visible
   // FRQ input mode (type vs draw)
   const [frqInputMode, setFrqInputMode] = useState<"type" | "draw">("type");
   const drawingCanvasRef = useRef<{ exportImage: () => Promise<string>; clearCanvas: () => void } | null>(null);
@@ -783,6 +786,7 @@ export default function StudyPage({
     setFrqEvalResult("");
     setFrqEvalStreaming(true);
     setRevealedIssues(0);
+    setIssueCardIndex(0);
 
     if (frqEvalWsRef.current) frqEvalWsRef.current.close();
 
@@ -2567,7 +2571,7 @@ export default function StudyPage({
               {/* Divider */}
               <div className="h-px bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
 
-              {/* Bottom half: progressive reveal evaluation */}
+              {/* Bottom half: issue card navigator */}
               <div className="flex flex-col flex-1 min-h-0">
                 <div
                   ref={evalScrollRef}
@@ -2581,7 +2585,7 @@ export default function StudyPage({
                     </div>
                   )}
 
-                  {/* Summary card — always visible once available */}
+                  {/* Summary card */}
                   {evalSections.summary && (
                     <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800/80 dark:to-slate-800/80 p-3">
                       <div className="prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-700 dark:prose-p:text-slate-300 prose-p:my-0 prose-strong:text-slate-900 dark:prose-strong:text-slate-100">
@@ -2590,104 +2594,120 @@ export default function StudyPage({
                     </div>
                   )}
 
-                  {/* Issue cards — progressive reveal */}
-                  {evalSections.issues.length > 0 && !frqEvalStreaming && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                        Issues ({revealedIssues} of {evalSections.issues.length} revealed)
-                      </div>
+                  {/* Issue card navigator */}
+                  {evalSections.issues.length > 0 && !frqEvalStreaming && (() => {
+                    const totalIssues = evalSections.issues.length;
+                    // Auto-reveal first issue; revealedIssues tracks how many are unlocked
+                    const unlockedCount = Math.max(revealedIssues, 1);
+                    const safeIndex = Math.min(issueCardIndex, totalIssues - 1);
+                    const currentIssue = evalSections.issues[safeIndex];
+                    const canGoBack = safeIndex > 0;
+                    const canGoNext = safeIndex < totalIssues - 1;
+                    const nextIsNew = safeIndex + 1 >= unlockedCount;
+                    const allSeen = unlockedCount >= totalIssues;
 
-                      {evalSections.issues.map((issue, idx) => {
-                        const isRevealed = idx < revealedIssues;
-                        const isNext = idx === revealedIssues;
+                    return (
+                      <div className="space-y-3">
+                        {/* Header label */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            Issues ({unlockedCount} of {totalIssues} revealed)
+                          </span>
+                        </div>
 
-                        if (!isRevealed && !isNext) {
-                          // Hidden issues — just show a locked placeholder
-                          return (
-                            <div
-                              key={idx}
-                              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-400 flex items-center gap-2"
-                            >
-                              <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                                {idx + 1}
-                              </span>
-                              <span className="italic">Hidden — reveal previous issues first</span>
-                            </div>
-                          );
-                        }
+                        {/* Single issue card */}
+                        <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-900/10 overflow-hidden">
+                          {/* Card header */}
+                          <div className="px-3 py-2.5 bg-red-100/70 dark:bg-red-900/25 border-b border-red-200 dark:border-red-900/50 flex items-center gap-2.5">
+                            <span className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                              {safeIndex + 1}
+                            </span>
+                            <span className="text-sm font-semibold text-red-700 dark:text-red-400 flex-1 truncate">
+                              {currentIssue.title}
+                            </span>
+                          </div>
 
-                        if (isNext && !isRevealed) {
-                          // Next issue to reveal — show as clickable
-                          return (
+                          {/* Card body */}
+                          <div className="px-3 py-3 prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 prose-pre:text-sm">
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                              {processLatexContent(currentIssue.content)}
+                            </ReactMarkdown>
+                          </div>
+
+                          {/* Navigation footer */}
+                          <div className="px-3 py-2 border-t border-red-100 dark:border-red-900/30 bg-red-50/60 dark:bg-red-900/10 flex items-center justify-between gap-2">
                             <button
-                              key={idx}
-                              onClick={() => setRevealedIssues(idx + 1)}
-                              className="w-full rounded-lg border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/20 px-3 py-3 text-sm text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-center gap-2"
+                              onClick={() => setIssueCardIndex(safeIndex - 1)}
+                              disabled={!canGoBack}
+                              className="p-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                             >
-                              <AlertTriangle className="w-4 h-4" />
-                              Reveal Issue {idx + 1}: {issue.line ? `Line ${issue.line}` : "Click to see"}
+                              <ChevronLeft className="w-4 h-4" />
                             </button>
-                          );
-                        }
 
-                        // Revealed issue
-                        return (
-                          <div
-                            key={idx}
-                            className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-900/10 overflow-hidden"
-                          >
-                            <div className="px-3 py-2 bg-red-100/60 dark:bg-red-900/20 flex items-center gap-2 border-b border-red-200 dark:border-red-900/50">
-                              <span className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-[10px] font-bold text-white">
-                                {idx + 1}
-                              </span>
-                              <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                                {issue.title}
-                              </span>
+                            {/* Dot indicators */}
+                            <div className="flex items-center gap-1.5">
+                              {evalSections.issues.map((_, i) => {
+                                const isUnlocked = i < unlockedCount;
+                                const isCurrent = i === safeIndex;
+                                return (
+                                  <button
+                                    key={i}
+                                    onClick={() => isUnlocked && setIssueCardIndex(i)}
+                                    disabled={!isUnlocked}
+                                    title={`Issue ${i + 1}`}
+                                    className={`rounded-full transition-all ${
+                                      isCurrent
+                                        ? "w-5 h-2 bg-red-500"
+                                        : isUnlocked
+                                        ? "w-2 h-2 bg-red-300 dark:bg-red-700 hover:bg-red-400"
+                                        : "w-2 h-2 bg-slate-200 dark:bg-slate-700 cursor-not-allowed"
+                                    }`}
+                                  />
+                                );
+                              })}
                             </div>
-                            <div className="px-3 py-2 prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-slate-900 prose-pre:text-sm">
-                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                {processLatexContent(issue.content)}
-                              </ReactMarkdown>
+
+                            <button
+                              onClick={() => {
+                                if (canGoNext) {
+                                  if (nextIsNew) setRevealedIssues(safeIndex + 2);
+                                  setIssueCardIndex(safeIndex + 1);
+                                }
+                              }}
+                              disabled={!canGoNext}
+                              className="p-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Rubric — shown after all issues seen */}
+                        {evalSections.rubric && allSeen && (
+                          <details className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <summary className="px-3 py-2 bg-slate-50 dark:bg-slate-800/50 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                              📋 Rubric Scoring
+                            </summary>
+                            <div className="px-3 py-2 prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-li:text-slate-600 dark:prose-li:text-slate-300">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.rubric}</ReactMarkdown>
+                            </div>
+                          </details>
+                        )}
+
+                        {/* Improvements — shown after all issues seen */}
+                        {evalSections.improvements && allSeen && (
+                          <div className="rounded-lg border border-green-200 dark:border-green-900/50 bg-green-50/50 dark:bg-green-900/10 p-3">
+                            <div className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider mb-1">
+                              💡 Key Improvements
+                            </div>
+                            <div className="prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-li:text-slate-600 dark:prose-li:text-slate-300">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.improvements}</ReactMarkdown>
                             </div>
                           </div>
-                        );
-                      })}
-
-                      {/* Reveal all button */}
-                      {revealedIssues < evalSections.issues.length && revealedIssues > 0 && (
-                        <button
-                          onClick={() => setRevealedIssues(evalSections.issues.length)}
-                          className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors underline"
-                        >
-                          Show all remaining issues
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Rubric section — collapsed by default, shown after all issues revealed */}
-                  {evalSections.rubric && !frqEvalStreaming && revealedIssues >= evalSections.issues.length && (
-                    <details className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                      <summary className="px-3 py-2 bg-slate-50 dark:bg-slate-800/50 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                        📋 Rubric Scoring
-                      </summary>
-                      <div className="px-3 py-2 prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-li:text-slate-600 dark:prose-li:text-slate-300">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.rubric}</ReactMarkdown>
+                        )}
                       </div>
-                    </details>
-                  )}
-
-                  {/* Improvements — shown after rubric */}
-                  {evalSections.improvements && !frqEvalStreaming && revealedIssues >= evalSections.issues.length && (
-                    <div className="rounded-lg border border-green-200 dark:border-green-900/50 bg-green-50/50 dark:bg-green-900/10 p-3">
-                      <div className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider mb-1">
-                        💡 Key Improvements
-                      </div>
-                      <div className="prose prose-sm dark:prose-invert max-w-none prose-p:text-slate-600 dark:prose-p:text-slate-300 prose-p:my-1 prose-li:text-slate-600 dark:prose-li:text-slate-300">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{evalSections.improvements}</ReactMarkdown>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* Footer actions */}
