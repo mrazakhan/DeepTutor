@@ -1629,14 +1629,14 @@ export default function StudyPage({
                         }
                         const lines = String(children).replace(/\n$/, "").split("\n");
                         return (
-                          <div className="my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+                          <div className="not-prose my-3 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900">
                             <div className="overflow-x-auto">
-                              <table className="w-full border-collapse text-xs font-mono leading-relaxed">
+                              <table className="w-full border-collapse text-xs font-mono leading-normal">
                                 <tbody>
                                   {lines.map((line, i) => (
-                                    <tr key={i} className="hover:bg-white/5 transition-colors">
-                                      <td className="select-none text-right pr-3 pl-3 py-px w-8 border-r border-slate-700/60 text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
-                                      <td className="pl-4 pr-4 py-px text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
+                                    <tr key={i} className="border-b border-slate-200 dark:border-slate-800/60 last:border-b-0 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+                                      <td className="select-none text-right pr-3 pl-3 py-0.5 w-8 border-r border-slate-200 dark:border-slate-700/60 text-slate-400 dark:text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
+                                      <td className="pl-4 pr-4 py-0.5 text-slate-800 dark:text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -2047,14 +2047,14 @@ export default function StudyPage({
                           }
                           const lines = String(children).replace(/\n$/, "").split("\n");
                           return (
-                            <div className="not-prose my-3 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+                            <div className="not-prose my-3 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900">
                               <div className="overflow-x-auto">
                                 <table className="w-full border-collapse text-xs font-mono leading-normal">
                                   <tbody>
                                     {lines.map((line, i) => (
-                                      <tr key={i} className="hover:bg-white/5 transition-colors">
-                                        <td className="select-none text-right pr-3 pl-3 py-px w-8 border-r border-slate-700/60 text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
-                                        <td className="pl-4 pr-4 py-px text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
+                                      <tr key={i} className="border-b border-slate-200 dark:border-slate-800/60 last:border-b-0 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+                                        <td className="select-none text-right pr-3 pl-3 py-0.5 w-8 border-r border-slate-200 dark:border-slate-700/60 text-slate-400 dark:text-slate-500 text-xs align-top" style={{ minWidth: "2rem" }}>{i + 1}</td>
+                                        <td className="pl-4 pr-4 py-0.5 text-slate-800 dark:text-slate-100 whitespace-pre">{line || "\u00a0"}</td>
                                       </tr>
                                     ))}
                                   </tbody>
