@@ -67,11 +67,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
-      } else {
+      } else if (res.status === 401 || res.status === 403) {
+        // Definitively unauthorized — clear token
         clearToken();
       }
+      // Any other non-OK status (500, 502, network hiccup) → leave token
+      // intact so the user isn't logged out due to a transient server error
     } catch {
-      clearToken();
+      // Network error or non-JSON body — keep the token so a temporary
+      // outage doesn't silently sign the user out
     } finally {
       setLoading(false);
     }
