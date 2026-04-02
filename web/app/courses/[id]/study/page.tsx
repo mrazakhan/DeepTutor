@@ -790,6 +790,9 @@ export default function StudyPage({
       setFrqEvalCode(frqAnswer);
     }
 
+    // Capture answer at evaluation time for backend submission
+    const submittedCode = frqAnswer;
+
     setFrqEvalResult("");
     setFrqEvalStreaming(true);
     setRevealedIssues(0);
@@ -842,6 +845,22 @@ export default function StudyPage({
     ws.onclose = () => {
       if (frqEvalWsRef.current === ws) frqEvalWsRef.current = null;
       setFrqEvalStreaming(false);
+      // Record FRQ attempt in backend (open-ended — not auto-graded)
+      if (activeFRQ && courseId && topicId && submittedCode.trim()) {
+        const token = localStorage.getItem("deeptutor_token");
+        fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/submit-answer`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            question_type: "frq",
+            question_text: activeFRQ.question,
+            student_answer: submittedCode,
+            correct_answer: activeFRQ.sample_solution || "",
+            is_correct: false,
+            explanation: activeFRQ.explanation || "",
+          }),
+        }).catch(() => {});
+      }
     };
   }
 
@@ -858,6 +877,35 @@ export default function StudyPage({
     }
     return "";
   }
+
+  /** Draft key for localStorage persistence. */
+  function frqDraftKey(idx: number) {
+    return `frq_draft_${courseId}_${topicId}_${idx}`;
+  }
+
+  /** Save FRQ answer to localStorage on every keystroke. */
+  function handleFrqAnswerChange(value: string) {
+    setFrqAnswer(value);
+    try { localStorage.setItem(frqDraftKey(frqIndex), value); } catch {}
+  }
+
+  /** Clear all FRQ drafts for this topic (called on full reset). */
+  function clearAllFrqDrafts(count: number) {
+    for (let i = 0; i < count; i++) {
+      try { localStorage.removeItem(frqDraftKey(i)); } catch {}
+    }
+  }
+
+  // Load saved FRQ draft whenever the active FRQ index changes.
+  // Overrides the scaffold default if the student has prior work saved.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!activeFRQ || !courseId || !topicId) return;
+    const saved = localStorage.getItem(frqDraftKey(frqIndex));
+    if (saved) setFrqAnswer(saved);
+  // We intentionally depend on frqIndex + activeFRQ identity (question text)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frqIndex, activeFRQ?.question]);
 
   function handleNextFRQ() {
     // Merge preloaded + extra FRQs
@@ -2006,12 +2054,27 @@ export default function StudyPage({
                         Exit
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (topicId) clearAssessmentSession(courseId, topicId);
+                          // Delete all progress from backend DB
+                          const token = localStorage.getItem("deeptutor_token");
+                          if (topicId) {
+                            await fetch(apiUrl(`/api/v1/courses/${courseId}/topics/${topicId}/progress`), {
+                              method: "DELETE",
+                              headers: { Authorization: `Bearer ${token}` },
+                            }).catch(() => {});
+                          }
+                          // Clear FRQ drafts for this topic
+                          const totalFrqCount = (preloadedContent?.practice_frq?.length || 0) + (extraFrqs?.length || 0);
+                          clearAllFrqDrafts(totalFrqCount + 5); // +5 buffer for extra FRQs
+                          // Reset all relevant state
                           setAssessmentIndex(0);
                           setAssessmentScore({ correct: 0, total: 0 });
                           setSelectedAnswer(null);
                           setShowMCQExplanation(false);
+                          setAssessmentQuestions([]);
+                          setTopicProficiency(null);
+                          setDimensionData([]);
                         }}
                         className="px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-600 transition-colors"
                       >
@@ -2851,7 +2914,7 @@ export default function StudyPage({
                     <label className="text-xs text-slate-500 mb-2 block">{t("Write your Java code:")}</label>
                     <CodeEditor
                       value={activeFRQ ? frqAnswer : inlineEditorCode}
-                      onChange={activeFRQ ? setFrqAnswer : setInlineEditorCode}
+                      onChange={activeFRQ ? handleFrqAnswerChange : setInlineEditorCode}
                       language="java"
                       height="calc(100vh - 320px)"
                     />
