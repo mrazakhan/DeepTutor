@@ -314,6 +314,8 @@ interface GlobalContextType {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
+  mobileSidebarOpen: boolean;
+  setMobileSidebarOpen: (open: boolean) => void;
 
   // Sidebar Customization
   sidebarDescription: string;
@@ -560,6 +562,7 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     SIDEBAR_DEFAULT_WIDTH,
   );
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
 
   // Initialize sidebar state from localStorage
   useEffect(() => {
@@ -2161,6 +2164,8 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
         sidebarCollapsed,
         setSidebarCollapsed,
         toggleSidebar,
+        mobileSidebarOpen,
+        setMobileSidebarOpen,
         sidebarDescription,
         setSidebarDescription,
         sidebarNavOrder,

@@ -21,6 +21,7 @@ import {
   Loader2,
   LucideIcon,
   BarChart3,
+  Menu,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
 import { useAuth } from "@/lib/auth";
@@ -53,6 +54,8 @@ export default function Sidebar() {
     setSidebarDescription,
     sidebarNavOrder,
     setSidebarNavOrder,
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
   } = useGlobal();
   const { t } = useTranslation();
   const { user, logout } = useAuth();
@@ -147,13 +150,28 @@ export default function Sidebar() {
     }
   }, [isEditingDescription]);
 
+  // Auto-close mobile sidebar on navigation
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [pathname]);
+
   const currentWidth = sidebarCollapsed
     ? SIDEBAR_COLLAPSED_WIDTH
     : SIDEBAR_EXPANDED_WIDTH;
 
   return (
+    <>
+      {/* Mobile backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
     <div
-      className="relative flex-shrink-0 bg-slate-50/80 dark:bg-slate-800/80 h-full border-r border-slate-200 dark:border-slate-700 flex flex-col transition-all duration-300 ease-in-out overflow-hidden"
+      className={`bg-slate-50/80 dark:bg-slate-800/80 h-full border-r border-slate-200 dark:border-slate-700 flex flex-col transition-all duration-300 ease-in-out overflow-hidden
+        fixed inset-y-0 left-0 z-50 md:relative md:flex-shrink-0
+        ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       style={{ width: currentWidth }}
     >
       {/* Header */}
@@ -502,5 +520,6 @@ export default function Sidebar() {
         </button>
       </div>
     </div>
+    </>
   );
 }

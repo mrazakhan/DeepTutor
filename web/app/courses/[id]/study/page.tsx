@@ -1242,8 +1242,8 @@ export default function StudyPage({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-slate-200 dark:border-slate-700 px-6 py-3 flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="border-b border-slate-200 dark:border-slate-700 px-3 py-2 md:px-6 md:py-3 flex-shrink-0">
+        <div className="flex items-center gap-3 pl-11 md:pl-0">
           <Link
             href={`/courses/${courseId}`}
             className="text-slate-400 hover:text-blue-500 transition-colors"
@@ -1297,7 +1297,7 @@ export default function StudyPage({
               </button>
               {/* Breakdown popover */}
               {showBreakdown && dimensionData.length > 0 && (
-                <div className="absolute top-full right-0 mt-2 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg z-50">
+                <div className="absolute top-full right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg z-50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Proficiency Breakdown</span>
                     <button
@@ -1335,7 +1335,7 @@ export default function StudyPage({
                 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30"
             >
               <GraduationCap className="w-3.5 h-3.5" />
-              {t("Assess")}
+              <span className="hidden md:inline">{t("Assess")}</span>
             </button>
           )}
           {/* Upload button */}
@@ -1345,7 +1345,7 @@ export default function StudyPage({
               border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <Paperclip className="w-3.5 h-3.5" />
-            {t("My Files")}
+            <span className="hidden md:inline">{t("My Files")}</span>
             {userFiles.length > 0 && (
               <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
                 {userFiles.length}
@@ -2094,7 +2094,7 @@ export default function StudyPage({
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-blue-500/20">
               <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className={`rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm transition-all duration-300 ${showMCQExplanation ? "flex-1" : "max-w-[85%]"}`}>
+            <div className={`rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm transition-all duration-300 ${showMCQExplanation ? "flex-1 max-w-full" : "max-w-full md:max-w-[85%]"}`}>
               {/* Header with progress + navigation dots */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -2121,15 +2121,17 @@ export default function StudyPage({
                               setShowMCQExplanation(false);
                             }
                           }}
-                          className={`w-2.5 h-2.5 rounded-full transition-all ${
-                            i === mcqIndex
-                              ? "w-6 bg-blue-500 rounded-full"
-                              : ans
-                                ? ans.correct ? "bg-emerald-400" : "bg-red-400"
-                                : "bg-slate-300 dark:bg-slate-600"
-                          }`}
+                          className="p-1.5"
                           title={`Question ${i + 1}${ans ? (ans.correct ? " ✓" : " ✗") : ""}`}
-                        />
+                        >
+                          <span className={`block rounded-full transition-all ${
+                            i === mcqIndex
+                              ? "w-6 h-3 bg-blue-500"
+                              : ans
+                                ? ans.correct ? "w-3 h-3 bg-emerald-400" : "w-3 h-3 bg-red-400"
+                                : "w-3 h-3 bg-slate-300 dark:bg-slate-600"
+                          }`} />
+                        </button>
                       );
                     })}
                   </div>
@@ -2147,10 +2149,10 @@ export default function StudyPage({
               )}
 
               {/* Body: left column (question + options + buttons) | right column (explanation) */}
-              <div className={`${showMCQExplanation ? "flex gap-6" : ""}`}>
+              <div className={`${showMCQExplanation ? "flex flex-col md:flex-row md:gap-6" : ""}`}>
 
-                {/* LEFT: question + options + action buttons (60%) */}
-                <div className={showMCQExplanation ? "flex-[3] min-w-0 flex flex-col" : ""}>
+                {/* LEFT: question + options + action buttons (60% on desktop) */}
+                <div className={showMCQExplanation ? "min-w-0 flex flex-col md:flex-[3]" : ""}>
                   {/* Question */}
                   <div className="prose prose-sm dark:prose-invert max-w-none mb-5">
                     <ReactMarkdown
@@ -2374,9 +2376,9 @@ export default function StudyPage({
                   )}
                 </div>
 
-                {/* RIGHT: explanation panel — 40% width, appears after submitting */}
+                {/* RIGHT: explanation panel — 40% on desktop, full-width stacked on mobile */}
                 {showMCQExplanation && (
-                  <div className="flex-[2] min-w-0 border-l border-slate-200 dark:border-slate-700/60 pl-6 flex flex-col" style={{ maxHeight: "600px" }}>
+                  <div className="min-w-0 md:flex-[2] border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-700/60 pt-4 md:pt-0 md:pl-6 mt-4 md:mt-0 flex flex-col overflow-y-auto max-h-[500px] md:max-h-[600px]">
                     <MCQExplanation
                       explanation={activeMCQ.explanation}
                       correctAnswer={activeMCQ.correct}
@@ -2403,7 +2405,7 @@ export default function StudyPage({
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-amber-500/20">
               <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className="max-w-[85%] rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm">
+            <div className="max-w-full md:max-w-[85%] rounded-2xl px-5 py-4 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 shadow-lg shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-700/50 backdrop-blur-sm">
               {/* Header with progress dots */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -2432,11 +2434,13 @@ export default function StudyPage({
                             setFrqEvalResult(null);
                           }
                         }}
-                        className={`w-2.5 h-2.5 rounded-full transition-all ${
-                          i === frqIndex ? "w-6 bg-amber-500 rounded-full" : "bg-slate-300 dark:bg-slate-600"
-                        }`}
+                        className="p-1.5"
                         title={`FRQ ${i + 1}`}
-                      />
+                      >
+                        <span className={`block rounded-full transition-all ${
+                          i === frqIndex ? "w-6 h-3 bg-amber-500" : "w-3 h-3 bg-slate-300 dark:bg-slate-600"
+                        }`} />
+                      </button>
                     ))}
                   </div>
                 )}
